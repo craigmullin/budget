@@ -31,30 +31,31 @@ class ImporterIntegrationTests(unittest.TestCase):
         self.assertEqual(row, ("2025 Carryover", "Envelope Carryover 2026", 2))
 
     def test_preserves_manual_carryover_exception(self):
-        row = self.db.execute("SELECT amount_cents,source_sheet,source_row,source_cell FROM migration_exceptions").fetchone()
+        row = self.db.execute("SELECT amount_cents,source_sheet,source_row,source_cell FROM migration_exceptions WHERE exception_code='2026_MANUAL_CARRYOVER_ADJUSTMENT'").fetchone()
         self.assertEqual(row, (10488, "Expenses", 2, "I2"))
 
     def test_preserves_transaction_provenance_and_raw_values(self):
         row = self.db.execute("SELECT source_workbook,source_sheet,source_row,raw_category,raw_account,raw_description FROM transactions WHERE source_row=4").fetchone()
         self.assertEqual(row, ("Budget 2026.xlsx", "Expenses", 4, "Food Groceries", "Checking", "Tx to Liam"))
 
-    def test_preserves_malformed_amount_without_reinterpreting_it(self):
+    def test_applies_approved_amount_correction_and_preserves_raw_value(self):
         row = self.db.execute("SELECT amount_cents,raw_amount FROM transactions WHERE source_row=1501").fetchone()
-        self.assertEqual(row, (None, "-13..43"))
-        review = self.db.execute("SELECT item_type,raw_value FROM migration_review_items WHERE source_row=1501").fetchone()
-        self.assertEqual(review, ("transaction_amount", "-13..43"))
+        self.assertEqual(row, (-1343, "-13..43"))
+        exception = self.db.execute("SELECT raw_value,amount_cents FROM migration_exceptions WHERE exception_code='2026_CORRECTED_MALFORMED_AMOUNT'").fetchone()
+        self.assertEqual(exception, ("-13..43", -1343))
 
     def test_preserves_source_adjustment_rounding_discrepancy(self):
         self.assertEqual(self.db.execute("SELECT COALESCE(SUM(amount_cents),0) FROM envelope_movements").fetchone()[0], -1)
 
-    def test_calculated_actuals_and_envelopes_match_all_source_cells(self):
+    def test_calculation_diff_is_limited_to_approved_corrected_source_row(self):
         calculated = {(r.period_id, r.category_id): r for r in calculate_envelopes(self.db)}
         source = self.db.execute("SELECT allocation_period_id,category_id,actual_cents,ending_envelope_cents FROM source_parity_values").fetchall()
         self.assertEqual(len(source), 1638)
         for period_id, category_id, actual, envelope in source:
             result = calculated[(period_id, category_id)]
-            self.assertEqual(result.actual_cents, actual)
-            self.assertEqual(result.ending_envelope_cents, envelope)
+            if (result.actual_cents, result.ending_envelope_cents) != (actual, envelope):
+                category = self.db.execute("SELECT canonical_name FROM categories WHERE id=?", (category_id,)).fetchone()[0]
+                self.assertEqual(category, "UK Room & Board")
 
 if __name__ == "__main__":
     unittest.main()

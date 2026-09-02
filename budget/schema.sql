@@ -164,7 +164,9 @@ CREATE TABLE migration_exceptions (
     id INTEGER PRIMARY KEY,
     exception_code TEXT NOT NULL,
     amount_cents INTEGER,
+    raw_value TEXT,
     description TEXT NOT NULL,
+    resolution TEXT NOT NULL,
     source_year INTEGER NOT NULL,
     source_workbook TEXT NOT NULL,
     source_sheet TEXT NOT NULL,
@@ -184,4 +186,5 @@ CREATE TABLE source_parity_values (
 );
 
 CREATE INDEX idx_transactions_category_date ON transactions(category_id, transaction_date);
+CREATE INDEX idx_transactions_date ON transactions(transaction_date DESC);
 CREATE INDEX idx_transactions_type ON transactions(transaction_type);

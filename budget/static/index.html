@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="M.B read-only 2026 budget view">
+  <title>M.B — 2026 Budget</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="mark" href="#top" aria-label="M.B home">M.B</a>
+    <div><p class="eyebrow">Budget · 2026</p><h1>Your money, as recorded.</h1></div>
+    <div class="readonly"><span aria-hidden="true"></span>Read only</div>
+  </header>
+  <main id="top">
+    <section class="intro" aria-labelledby="overview-title">
+      <div><p class="kicker">2026 overview</p><h2 id="overview-title">A faithful view of the workbook.</h2><p id="as-of" class="muted">Loading source data…</p></div>
+      <label class="period-label">Allocation period<select id="period" aria-label="Allocation period"></select></label>
+    </section>
+    <section id="summary" class="summary" aria-label="Budget summary"></section>
+    <section class="panel">
+      <div class="panel-heading"><div><p class="kicker">Envelope plan</p><h2>Budget, actual, and remaining</h2></div><input id="envelope-filter" type="search" placeholder="Filter envelopes" aria-label="Filter envelopes"></div>
+      <div class="table-wrap"><table><thead><tr><th>Envelope</th><th>Budget</th><th>Actual</th><th>Remaining</th></tr></thead><tbody id="envelopes"></tbody></table></div>
+    </section>
+    <section class="grid">
+      <article class="panel"><div class="panel-heading"><div><p class="kicker">Recent activity</p><h2>Ledger</h2></div><span class="muted">Latest 100</span></div><div id="transactions" class="activity"></div></article>
+      <aside class="panel"><div class="panel-heading"><div><p class="kicker">Audit trail</p><h2>Migration exceptions</h2></div></div><div id="exceptions" class="exceptions"></div></aside>
+    </section>
+  </main>
+  <footer>Imported from Budget 2026.xlsx · Source rows and raw values preserved</footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

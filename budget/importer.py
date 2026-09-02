@@ -126,15 +126,22 @@ def import_2026(source: str | Path, database: str | Path) -> dict[str, int | str
                 )
                 review_count += 1
                 category_type = "expense"
-            try:
-                amount = cents(raw_amount)
-            except Exception:
-                amount = None
+            if row_number == 1501 and raw_amount == "-13..43":
+                amount = -1343
                 connection.execute(
-                    "INSERT INTO migration_review_items (item_type,raw_value,reason,source_year,source_workbook,source_sheet,source_row,raw_category,raw_account,raw_description,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    ("transaction_amount", raw_amount, "Amount is non-numeric; preserved raw and excluded from numeric calculations", YEAR, source.name, EXPENSES_SHEET, row_number, raw_category, _value(row,"E"), _value(row,"B"), batch_id),
+                    "INSERT INTO migration_exceptions (exception_code,amount_cents,raw_value,description,resolution,source_year,source_workbook,source_sheet,source_row,source_cell,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    ("2026_CORRECTED_MALFORMED_AMOUNT", amount, raw_amount, "Malformed amount text in the source ledger", "Approved correction: interpret -13..43 as -13.43 while retaining the raw value", YEAR, source.name, EXPENSES_SHEET, row_number, "D1501", batch_id),
                 )
-                review_count += 1
+            else:
+                try:
+                    amount = cents(raw_amount)
+                except Exception:
+                    amount = None
+                    connection.execute(
+                        "INSERT INTO migration_review_items (item_type,raw_value,reason,source_year,source_workbook,source_sheet,source_row,raw_category,raw_account,raw_description,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        ("transaction_amount", raw_amount, "Amount is non-numeric; preserved raw and excluded from numeric calculations", YEAR, source.name, EXPENSES_SHEET, row_number, raw_category, _value(row,"E"), _value(row,"B"), batch_id),
+                    )
+                    review_count += 1
             connection.execute(
                 """INSERT INTO transactions
                 (transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,check_number,
@@ -150,8 +157,8 @@ def import_2026(source: str | Path, database: str | Path) -> dict[str, int | str
             transaction_count += 1
             if row_number == 2 and _value(row,"I") and "$104.88" in _value(row,"I"):
                 connection.execute(
-                    "INSERT INTO migration_exceptions (exception_code,amount_cents,description,source_year,source_workbook,source_sheet,source_row,source_cell,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                    ("2026_MANUAL_CARRYOVER_ADJUSTMENT", 10488, _value(row,"I"), YEAR, source.name, EXPENSES_SHEET, row_number, "I2", batch_id),
+                    "INSERT INTO migration_exceptions (exception_code,amount_cents,raw_value,description,resolution,source_year,source_workbook,source_sheet,source_row,source_cell,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    ("2026_MANUAL_CARRYOVER_ADJUSTMENT", 10488, _value(row,"I"), _value(row,"I"), "Preserved as documented source behavior", YEAR, source.name, EXPENSES_SHEET, row_number, "I2", batch_id),
                 )
 
         # Each 5-column budget block is Budget, Actual, Envelope, Adjustment; the date anchor is Actual's column.
@@ -196,6 +203,10 @@ def import_2026(source: str | Path, database: str | Path) -> dict[str, int | str
                     (cur.lastrowid, category_id, cents(None if actual_cell is None else actual_cell.value),
                      cents(None if envelope_cell is None else envelope_cell.value), f"{col_name(actual_col)}{row_number}", f"{col_name(envelope_col)}{row_number}"),
                 )
+        connection.execute(
+            "INSERT INTO migration_exceptions (exception_code,amount_cents,raw_value,description,resolution,source_year,source_workbook,source_sheet,source_row,source_cell,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            ("2026_LEGACY_ADJUSTMENT_DISPLAY_ROUNDING", -1, "-$0.01", "Legacy penny workaround used to prevent effectively-zero envelopes from triggering red conditional formatting", "Approved: preserve source values and allow the documented non-zero historical adjustment net", YEAR, source.name, BUDGET_SHEET, 1, "BK72:BK73", batch_id),
+        )
     connection.commit()
     stats = {
         "batch_id": batch_id,

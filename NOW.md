@@ -4,7 +4,8 @@ Last reviewed: 2026-09-02
 
 - Pass 1 historical migration core is implemented for the authoritative 2026 workbook only.
 - SQLite schema, XLSX importer, integer-cent calculation engine, provenance metadata, tests, and a temporary parity report are available.
-- Actual and Ending Envelope parity is penny-for-penny across all 1,638 category-period comparisons.
-- Review remains open for malformed `Expenses!D1501` (`-13..43`) and a `-$0.01` adjustment-net release-gate discrepancy in the 2026-06-05 period.
-- No UI or pre-2026 imports have been implemented.
-- Next: review Pass 1 parity results before authorizing another historical import pass.
+- Pass 1 is approved and PASS. `Expenses!D1501` is imported as `-$13.43` with raw `-13..43` retained as a corrected migration exception.
+- The `-$0.01` adjustment net is an approved legacy rounding/display workaround; source values remain unchanged and the exception is documented.
+- Pass 2 provides a local, read-only 2026 browser UI backed by the proven SQLite/calculation layer.
+- No write functionality or pre-2026 imports have been implemented.
+- Next: review the read-only 2026 UI before authorizing further UI capabilities or historical imports.
