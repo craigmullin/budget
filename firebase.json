@@ -1,0 +1,5 @@
+{
+  "hosting": {"public":"budget/static","ignore":["firebase.json","**/.*","**/node_modules/**"],"headers":[{"source":"**","headers":[{"key":"Cache-Control","value":"no-cache"},{"key":"X-Content-Type-Options","value":"nosniff"}]}]},
+  "firestore":{"rules":"firestore.rules"},
+  "emulators":{"firestore":{"port":8088},"ui":{"enabled":false}}
+}

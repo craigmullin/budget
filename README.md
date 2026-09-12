@@ -33,3 +33,5 @@ python -m budget.cli serve
 The authoritative visual direction is in `docs/UI-VISUAL-DESIGN-HANDOFF.md`: a warm, editorial household ledger with cream paper, oxblood accents, and the B. mark. Existing source metadata retains its original identifiers.
 
 See `PROJECT.md` and `NOW.md` for the verified state.
+
+Firebase Spark deployment and migration details are in `docs/FIREBASE-DEPLOYMENT.md`. The hosted site is https://budget-24acc.web.app; Google sign-in is enabled. No Cloud Run or Cloud SQL is used. Local SQLite and hosted Firestore are separate stores.

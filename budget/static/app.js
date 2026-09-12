@@ -1,3 +1,4 @@
+import {isCloud,cloudRequest,startCloud,downloadBackup} from './cloud.mjs';
 const money = cents => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format((cents||0)/100);
 const dateLabel = value => value ? new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`)) : 'No transactions';
 const amountClass = cents => cents < 0 ? 'negative' : '';
@@ -5,6 +6,7 @@ const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp
 let model;
 let view = 'home';
 let detailId;
+let transactionRevision=0;
 const signedMoney = cents => `${cents > 0 ? '+' : ''}${money(cents)}`;
 const periodRange = () => {
   const end = new Date(`${model.selected_period.end_date_exclusive}T00:00:00Z`);
@@ -13,6 +15,7 @@ const periodRange = () => {
 };
 
 async function request(url, options={}) {
+  if(isCloud)return cloudRequest(url,options);
   const response = await fetch(url, options);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || 'The change could not be saved');
@@ -75,6 +78,7 @@ function populateForms() {
   document.querySelector('#move-to').innerHTML=envelopes;
 }
 function openTransaction(item) {
+  transactionRevision=item?.revision||0;
   document.querySelector('#envelope-dialog').close();
   const form=document.querySelector('#transaction-form'); form.reset(); form.querySelector('.form-error').textContent='';
   document.querySelector('#transaction-id').value=item?.id||'';
@@ -101,12 +105,14 @@ function busy(form,value){form.querySelectorAll('button').forEach(button=>button
 document.querySelector('#period').addEventListener('change',e=>load(e.target.value).catch(showError));
 document.querySelector('#envelope-filter').addEventListener('input',renderEnvelopes);
 document.querySelector('#add-transaction').addEventListener('click',()=>openTransaction());
+document.querySelector('#cloud-backup').classList.toggle('hidden',!isCloud);
+document.querySelector('#cloud-backup').addEventListener('click',()=>downloadBackup().catch(error=>toast(error.message)));
 document.querySelector('#move-money').addEventListener('click',()=>openMove(model.envelopes[0].id));
 document.querySelector('#detail-move').addEventListener('click',()=>openMove(detailId));
 document.querySelector('#move-amount').addEventListener('input',event=>{document.querySelector('#move-submit').textContent=Number(event.target.value)>0?`Move ${money(Math.round(Number(event.target.value)*100))}`:'Move money';});
 window.addEventListener('hashchange',()=>{if(model) render();});
 document.addEventListener('click',event=>{
-  const edit=event.target.closest('[data-edit]'); if(edit) openTransaction([...model.transactions,...model.period_transactions].find(t=>t.id===Number(edit.dataset.edit)));
+  const edit=event.target.closest('[data-edit]'); if(edit) openTransaction([...model.transactions,...model.period_transactions].find(t=>String(t.id)===edit.dataset.edit));
   const detail=event.target.closest('[data-detail]'); if(detail){detailId=Number(detail.dataset.detail);renderDetail();document.querySelector('#envelope-dialog').showModal();}
   const move=event.target.closest('[data-move]'); if(move) openMove(move.dataset.move);
   if(event.target.closest('[data-close]')) event.target.closest('dialog').close();
@@ -115,12 +121,13 @@ document.querySelector('#transaction-form').addEventListener('submit',async even
   event.preventDefault(); const form=event.currentTarget; busy(form,true); form.querySelector('.form-error').textContent='';
   const id=document.querySelector('#transaction-id').value;
   const payload={transaction_date:document.querySelector('#transaction-date').value,amount:document.querySelector('#transaction-amount').value,description:document.querySelector('#transaction-description').value,category_id:Number(document.querySelector('#transaction-category').value),account_id:Number(document.querySelector('#transaction-account').value)};
+  if(isCloud)payload.expected_revision=transactionRevision;
   try{await request(id?`/api/transactions/${id}`:'/api/transactions',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});form.closest('dialog').close();await load(model.selected_period.sequence);toast(id?'Transaction updated':'Transaction added');}catch(error){form.querySelector('.form-error').textContent=error.message;}finally{busy(form,false);}
 });
 document.querySelector('#delete-transaction').addEventListener('click',async()=>{
   if(!confirm('Delete this transaction? This cannot be undone.')) return;
   const form=document.querySelector('#transaction-form'); busy(form,true);
-  try{await request(`/api/transactions/${document.querySelector('#transaction-id').value}`,{method:'DELETE'});form.closest('dialog').close();await load(model.selected_period.sequence);toast('Transaction deleted');}catch(error){form.querySelector('.form-error').textContent=error.message;}finally{busy(form,false);}
+  try{await request(`/api/transactions/${document.querySelector('#transaction-id').value}`,{method:'DELETE',body:JSON.stringify({expected_revision:transactionRevision})});form.closest('dialog').close();await load(model.selected_period.sequence);toast('Transaction deleted');}catch(error){form.querySelector('.form-error').textContent=error.message;}finally{busy(form,false);}
 });
 document.querySelector('#move-form').addEventListener('submit',async event=>{
   event.preventDefault(); const form=event.currentTarget; busy(form,true); form.querySelector('.form-error').textContent='';
@@ -128,4 +135,4 @@ document.querySelector('#move-form').addEventListener('submit',async event=>{
   try{await request('/api/moves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});form.closest('dialog').close();await load(model.selected_period.sequence);toast(`${money(Math.round(Number(payload.amount)*100))} moved from ${model.envelopes.find(e=>e.id===payload.from_category_id).category}`);}catch(error){form.querySelector('.form-error').textContent=error.message;}finally{busy(form,false);}
 });
 function showError(error){document.querySelector('main').innerHTML=`<section class="panel"><h2>Budget data is unavailable</h2><p>${esc(error.message)}</p></section>`;}
-load().catch(showError);
+if(isCloud)startCloud(()=>load(model?.selected_period.sequence),error=>toast(error.message)).catch(showError);else load().catch(showError);

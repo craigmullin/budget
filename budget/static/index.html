@@ -15,7 +15,9 @@
     <span class="brand-name">Budget</span>
     <nav aria-label="Primary navigation"><a href="#home" data-nav="home">Home</a><a href="#envelopes" data-nav="envelopes">Envelopes</a><a href="#transactions" data-nav="transactions">Transactions</a><a href="#more" data-nav="more">More</a></nav>
     <span class="local-status">Saved locally</span>
+    <button id="cloud-signout" class="text-action hidden" type="button">Sign out</button>
   </header>
+  <section id="cloud-login" class="login-panel hidden"><p class="kicker">Your household ledger</p><h1>A place for your money.</h1><p class="muted">Sign in to your private household budget.</p><button id="cloud-signin" type="button">Continue with Google</button><p id="login-error" class="form-error" role="alert"></p></section>
   <main id="top">
     <section class="intro">
       <div><p class="kicker" id="page-kicker">Your household ledger</p><h1 id="page-title">Current period</h1><p id="as-of" class="muted">Loading budget…</p></div>
@@ -36,6 +38,7 @@
       <div class="panel-heading"><div><p class="kicker">Source & records</p><h2>2026 at a glance</h2></div></div><div id="year-summary" class="year-summary"></div>
       <details class="audit"><summary>Migration exceptions <span class="muted">Preserved source notes</span></summary><div id="exceptions" class="exceptions"></div></details>
       <p class="form-help">Budget Session, reconciliation, trips, and historical imports are not part of this version.</p>
+      <button id="cloud-backup" class="secondary hidden" type="button">Download household backup</button>
     </section>
   </main>
   <dialog id="envelope-dialog" aria-labelledby="envelope-title"><div class="detail-content"><div class="dialog-heading"><p class="kicker">Envelope detail</p><button class="icon-button" type="button" data-close aria-label="Close envelope detail">×</button></div><h2 id="envelope-title"></h2><p id="envelope-total" class="detail-total"></p><div id="envelope-breakdown" class="breakdown"></div><div class="detail-actions"><button id="detail-move" type="button">Move money</button></div><h3>Transactions this period</h3><div id="envelope-transactions" class="activity"></div><p id="envelope-source" class="source"></p></div></dialog>
@@ -43,6 +46,6 @@
   <dialog id="move-dialog" aria-labelledby="move-title"><form id="move-form"><div class="dialog-heading"><div><p class="kicker">Envelope plan</p><h2 id="move-title">Move money</h2></div><button class="icon-button" type="button" data-close aria-label="Close move form">×</button></div><div class="form-grid"><label class="wide">From<select id="move-from" required></select></label><label class="wide">To<select id="move-to" required></select></label><label>Amount<input id="move-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required></label><label>Description<input id="move-description" maxlength="250" placeholder="Optional note"></label></div><p class="form-help" id="move-period"></p><p class="form-error" role="alert"></p><div class="dialog-actions"><span class="spacer"></span><button class="secondary" type="button" data-close>Cancel</button><button id="move-submit" type="submit">Move money</button></div></form></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <footer><span>Budget · 2026</span><span>Stored on this computer · Based on Budget 2026.xlsx</span></footer>
-  <script src="/app.js" defer></script>
+  <script src="/app.js" type="module"></script>
 </body>
 </html>
