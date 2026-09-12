@@ -6,9 +6,9 @@ from pathlib import Path
 from budget.importer import import_2026
 from budget.calculations import calculate_envelopes
 
-SOURCE = Path(r"C:\Users\cmullin\Downloads\Budget 2026.xlsx")
+from workbook_fixture import SOURCE, AVAILABLE, REASON
 
-@unittest.skipUnless(SOURCE.exists(), "Budget 2026 workbook fixture is not available")
+@unittest.skipUnless(AVAILABLE, REASON)
 class ImporterIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

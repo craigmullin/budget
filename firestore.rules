@@ -48,6 +48,180 @@ service cloud.firestore {
         && request.resource.data.created_by == request.auth.uid && request.resource.data.created_at == request.time;
       allow update, delete: if false;
     }
+    function paydayConfig() { return get(/databases/$(database)/documents/households/main/seed/payday).data; }
+    // Fixed immutable envelope order, extracted from the approved 2026 Final configuration.
+    function validGroup0(a) {
+      let v0 = a[0];
+      let v1 = a[1];
+      let v2 = a[2];
+      let v3 = a[3];
+      let v4 = a[4];
+      let v5 = a[5];
+      let v6 = a[6];
+      let v7 = a[7];
+      let v8 = a[8];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function validGroup1(a) {
+      let v0 = a[9];
+      let v1 = a[10];
+      let v2 = a[11];
+      let v3 = a[12];
+      let v4 = a[13];
+      let v5 = a[14];
+      let v6 = a[15];
+      let v7 = a[16];
+      let v8 = a[17];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function validGroup2(a) {
+      let v0 = a[18];
+      let v1 = a[19];
+      let v2 = a[20];
+      let v3 = a[21];
+      let v4 = a[22];
+      let v5 = a[23];
+      let v6 = a[24];
+      let v7 = a[25];
+      let v8 = a[26];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function validGroup3(a) {
+      let v0 = a[27];
+      let v1 = a[28];
+      let v2 = a[29];
+      let v3 = a[30];
+      let v4 = a[31];
+      let v5 = a[32];
+      let v6 = a[33];
+      let v7 = a[34];
+      let v8 = a[35];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function validGroup4(a) {
+      let v0 = a[36];
+      let v1 = a[37];
+      let v2 = a[38];
+      let v3 = a[39];
+      let v4 = a[40];
+      let v5 = a[41];
+      let v6 = a[42];
+      let v7 = a[43];
+      let v8 = a[44];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function validGroup5(a) {
+      let v0 = a[45];
+      let v1 = a[46];
+      let v2 = a[47];
+      let v3 = a[48];
+      let v4 = a[49];
+      let v5 = a[50];
+      let v6 = a[51];
+      let v7 = a[52];
+      let v8 = a[53];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function validGroup6(a) {
+      let v0 = a[54];
+      let v1 = a[55];
+      let v2 = a[56];
+      let v3 = a[57];
+      let v4 = a[58];
+      let v5 = a[59];
+      let v6 = a[60];
+      let v7 = a[61];
+      let v8 = a[62];
+      return (v0 is int && v0 >= 0 && v0 <= 100000000) && (v1 is int && v1 >= 0 && v1 <= 100000000) && (v2 is int && v2 >= 0 && v2 <= 100000000) && (v3 is int && v3 >= 0 && v3 <= 100000000) && (v4 is int && v4 >= 0 && v4 <= 100000000) && (v5 is int && v5 >= 0 && v5 <= 100000000) && (v6 is int && v6 >= 0 && v6 <= 100000000) && (v7 is int && v7 >= 0 && v7 <= 100000000) && (v8 is int && v8 >= 0 && v8 <= 100000000);
+    }
+    function certified(collection,id,g,a,r) {
+      let d = getAfter(/databases/$(database)/documents/households/main/$(collection)/$(id)/checks/$(g)).data;
+      return d.allocations == a && d.revision == r;
+    }
+    function validAllocations(collection,id,a,r) {
+      return a is list && a.size() == 63 && certified(collection,id,'0',a,r) && certified(collection,id,'1',a,r) && certified(collection,id,'2',a,r) && certified(collection,id,'3',a,r) && certified(collection,id,'4',a,r) && certified(collection,id,'5',a,r) && certified(collection,id,'6',a,r);
+    }
+    function validCheck(collection,id,g) {
+      let d = request.resource.data;
+      let parent = getAfter(/databases/$(database)/documents/households/main/$(collection)/$(id)).data;
+      return d.keys().hasOnly(['allocations','revision']) && d.allocations is list && d.allocations.size() == 63
+        && d.revision == parent.revision && d.allocations == parent.allocations
+        && parent.updated_by == request.auth.uid && parent.updated_at == request.time
+        && ((g == '0' && validGroup0(d.allocations)) || (g == '1' && validGroup1(d.allocations))
+          || (g == '2' && validGroup2(d.allocations)) || (g == '3' && validGroup3(d.allocations))
+          || (g == '4' && validGroup4(d.allocations)) || (g == '5' && validGroup5(d.allocations)) || (g == '6' && validGroup6(d.allocations)));
+    }
+    match /households/main/settings/{id}/checks/{g} {
+      allow read: if member();
+      allow create, update: if member() && id == 'defaults' && validCheck('settings',id,g);
+      allow delete: if false;
+    }
+    match /households/main/sessions/{id}/checks/{g} {
+      allow read: if member();
+      allow create, update: if member() && (!exists(/databases/$(database)/documents/households/main/sessions/$(id))
+        || get(/databases/$(database)/documents/households/main/sessions/$(id)).data.status == 'draft') && validCheck('sessions',id,g);
+      allow delete: if false;
+    }
+    function revised() {
+      return request.resource.data.revision is int
+        && request.resource.data.updated_by == request.auth.uid
+        && request.resource.data.updated_at == request.time;
+    }
+    function validSession(id) {
+      let d = request.resource.data;
+      let p = paydayConfig().periods[id];
+      return string(d.period_id) == id
+        && d.keys().hasOnly(['period_id','session_date','status','allocations','available_cents','expected_cents','expected_summary','revision','updated_by','updated_at'])
+        && d.session_date in catalog().valid_dates && d.session_date >= p.start && d.session_date < p.end
+        && d.status in ['draft','completed'] && validAllocations('sessions',id,d.allocations,d.revision)
+        && d.available_cents is int && d.available_cents >= -1000000000000 && d.available_cents <= 1000000000000
+        && d.expected_cents is int && d.expected_cents >= 0 && d.expected_cents <= 1000000000000
+        && d.expected_summary is string && d.expected_summary.size() <= 10000 && revised();
+    }
+    match /households/main/settings/{id} {
+      allow read: if member();
+      allow create: if member() && id == 'defaults' && revised() && request.resource.data.revision == 1
+        && request.resource.data.keys().hasOnly(['allocations','revision','updated_by','updated_at']) && validAllocations('settings',id,request.resource.data.allocations,request.resource.data.revision);
+      allow update: if member() && id == 'defaults' && revised() && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.keys().hasOnly(['allocations','revision','updated_by','updated_at']) && validAllocations('settings',id,request.resource.data.allocations,request.resource.data.revision);
+      allow delete: if false;
+    }
+    match /households/main/sessions/{id} {
+      allow read: if member();
+      allow create: if member() && validSession(id) && request.resource.data.status == 'draft' && request.resource.data.revision == 1;
+      allow update: if member() && resource.data.status == 'draft' && validSession(id)
+        && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
+    match /households/main/extras/{id} {
+      allow read: if member();
+      allow create: if member()
+        && request.resource.data.keys().hasOnly(['period_id','category_id','amount_cents','allocation_date','allocation_at','description','created_by','created_at'])
+        && request.resource.data.category_id in paydayConfig().envelope_ids
+        && request.resource.data.allocation_date in catalog().valid_dates
+        && request.resource.data.allocation_at is timestamp && request.resource.data.allocation_at <= request.time
+        && request.resource.data.allocation_at.toMillis() == paydayConfig().date_millis[request.resource.data.allocation_date]
+        && request.resource.data.allocation_date >= paydayConfig().periods[string(request.resource.data.period_id)].start
+        && request.resource.data.allocation_date < paydayConfig().periods[string(request.resource.data.period_id)].end
+        && request.resource.data.amount_cents is int && request.resource.data.amount_cents > 0 && request.resource.data.amount_cents <= 100000000
+        && request.resource.data.description is string && request.resource.data.description.size() <= 250
+        && request.resource.data.created_by == request.auth.uid && request.resource.data.created_at == request.time;
+      allow update, delete: if false;
+    }
+    function validExpected() {
+      let d = request.resource.data;
+      return revised() && d.keys().hasOnly(['source','amount_cents','expected_date','note','status','revision','updated_by','updated_at'])
+        && d.source is string && d.source.size() > 0 && d.source.size() <= 100
+        && d.amount_cents is int && d.amount_cents > 0 && d.amount_cents <= 100000000
+        && d.expected_date in catalog().valid_dates && d.note is string && d.note.size() <= 250
+        && d.status in ['pending','received','dismissed'];
+    }
+    match /households/main/expected/{id} {
+      allow read: if member();
+      allow create: if member() && validExpected() && request.resource.data.revision == 1;
+      allow update: if member() && validExpected() && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

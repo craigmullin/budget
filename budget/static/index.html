@@ -13,7 +13,7 @@
   <header class="topbar">
     <a class="mark" href="#home" aria-label="Budget home">B<span>.</span></a>
     <span class="brand-name">Budget</span>
-    <nav aria-label="Primary navigation"><a href="#home" data-nav="home">Home</a><a href="#envelopes" data-nav="envelopes">Envelopes</a><a href="#transactions" data-nav="transactions">Transactions</a><a href="#more" data-nav="more">More</a></nav>
+    <nav aria-label="Primary navigation"><a href="#home" data-nav="home">Home</a><a href="#envelopes" data-nav="envelopes">Envelopes</a><a href="#transactions" data-nav="transactions">Transactions</a><a href="#budget" data-nav="budget">Budget</a><a href="#more" data-nav="more">More</a></nav>
     <span class="local-status">Saved locally</span>
     <button id="cloud-signout" class="text-action hidden" type="button">Sign out</button>
   </header>
@@ -24,6 +24,7 @@
       <label class="period-label">Allocation period<select id="period" aria-label="Allocation period"></select></label>
     </section>
     <section id="summary" class="summary" aria-label="Current period summary"></section>
+    <section id="budget-section" class="panel hidden" aria-label="Payday Budget"></section>
     <section id="envelope-section" class="panel">
       <div class="panel-heading"><div><p class="kicker">Envelope balances</p><h2 id="envelope-heading">A place for every dollar.</h2></div><div class="actions"><input id="envelope-filter" type="search" placeholder="Find an envelope" aria-label="Find an envelope"><button id="move-money" class="secondary" type="button">Move money</button></div></div>
       <div id="envelopes" class="envelope-list"></div>
@@ -37,10 +38,11 @@
     <section id="more-section" class="panel hidden">
       <div class="panel-heading"><div><p class="kicker">Source & records</p><h2>2026 at a glance</h2></div></div><div id="year-summary" class="year-summary"></div>
       <details class="audit"><summary>Migration exceptions <span class="muted">Preserved source notes</span></summary><div id="exceptions" class="exceptions"></div></details>
-      <p class="form-help">Budget Session, reconciliation, trips, and historical imports are not part of this version.</p>
+      <p class="form-help">Payday Budget is available under Budget. Reconciliation, trips, and historical imports are not part of this version.</p>
       <button id="cloud-backup" class="secondary hidden" type="button">Download household backup</button>
     </section>
   </main>
+  <dialog id="budget-dialog" aria-label="Budget review and settings"></dialog>
   <dialog id="envelope-dialog" aria-labelledby="envelope-title"><div class="detail-content"><div class="dialog-heading"><p class="kicker">Envelope detail</p><button class="icon-button" type="button" data-close aria-label="Close envelope detail">×</button></div><h2 id="envelope-title"></h2><p id="envelope-total" class="detail-total"></p><div id="envelope-breakdown" class="breakdown"></div><div class="detail-actions"><button id="detail-move" type="button">Move money</button></div><h3>Transactions this period</h3><div id="envelope-transactions" class="activity"></div><p id="envelope-source" class="source"></p></div></dialog>
   <dialog id="transaction-dialog" aria-labelledby="transaction-title"><form id="transaction-form"><div class="dialog-heading"><div><p class="kicker">Household ledger</p><h2 id="transaction-title">Add transaction</h2></div><button class="icon-button" type="button" data-close aria-label="Close transaction form">×</button></div><input id="transaction-id" type="hidden"><div class="form-grid"><label>Date<input id="transaction-date" type="date" min="2026-01-01" max="2026-12-31" required></label><label>Amount<input id="transaction-amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" required></label><label class="wide">Description<input id="transaction-description" maxlength="250" autocomplete="off"></label><label>Envelope / category<select id="transaction-category" required></select></label><label>Account<select id="transaction-account" required></select></label></div><p class="form-help">Positive for spending or income. Negative for a refund or credit.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button id="delete-transaction" class="danger hidden" type="button">Delete</button><span class="spacer"></span><button class="secondary" type="button" data-close>Cancel</button><button type="submit">Save transaction</button></div></form></dialog>
   <dialog id="move-dialog" aria-labelledby="move-title"><form id="move-form"><div class="dialog-heading"><div><p class="kicker">Envelope plan</p><h2 id="move-title">Move money</h2></div><button class="icon-button" type="button" data-close aria-label="Close move form">×</button></div><div class="form-grid"><label class="wide">From<select id="move-from" required></select></label><label class="wide">To<select id="move-to" required></select></label><label>Amount<input id="move-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required></label><label>Description<input id="move-description" maxlength="250" placeholder="Optional note"></label></div><p class="form-help" id="move-period"></p><p class="form-error" role="alert"></p><div class="dialog-actions"><span class="spacer"></span><button class="secondary" type="button" data-close>Cancel</button><button id="move-submit" type="submit">Move money</button></div></form></dialog>

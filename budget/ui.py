@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .calculations import calculate_envelopes
+from .payday import additions, state as payday_state, save as save_payday, initialize as initialize_payday
 
 STATIC = Path(__file__).with_name("static")
 APP_SOURCE_SHEET = "M.B App"
@@ -207,14 +208,18 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
            WHERE b.allocation_period_id=? ORDER BY c.display_order""", (selected["id"],)
     ).fetchall()
     envelopes = []
+    supplemental = additions(connection)
     for row in rows:
         calc = calculations[(selected["id"], row["id"])]
         moved = connection.execute("SELECT COALESCE(SUM(amount_cents),0) FROM envelope_movements WHERE allocation_period_id=? AND category_id=?", (selected["id"], row["id"])).fetchone()[0]
-        envelopes.append({"id": row["id"], "category": row["canonical_name"], "budget_cents": row["amount_cents"],
+        budget = row["amount_cents"] + supplemental.get((selected["id"], row["id"]), 0)
+        envelopes.append({"id": row["id"], "category": row["canonical_name"], "budget_cents": budget,
                           "actual_cents": calc.actual_cents, "ending_cents": calc.ending_envelope_cents,
-                          "moved_cents": moved, "starting_cents": calc.ending_envelope_cents - row["amount_cents"] + calc.actual_cents - moved,
+                          "moved_cents": moved, "starting_cents": calc.ending_envelope_cents - budget + calc.actual_cents - moved,
                           "source": {"sheet": row["source_sheet"], "row": row["source_row"],
                                      "actual_cell": row["actual_source_cell"], "ending_cell": row["ending_source_cell"]}})
+        if supplemental.get((selected['id'],row['id']),0):
+            envelopes[-1]['application_budget_cents'] = supplemental[(selected['id'],row['id'])]
     transactions = [dict(r) for r in connection.execute(
         """SELECT id,transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,
                   raw_category,raw_account,source_sheet,source_row
@@ -249,11 +254,13 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
         "accounts": [dict(r) for r in connection.execute("SELECT id,canonical_name FROM accounts ORDER BY canonical_name")],
         "envelopes": envelopes, "transactions": transactions, "period_transactions": period_transactions, "exceptions": exceptions,
     }
+    result['payday'] = payday_state(connection, selected['id'])
     connection.close()
     return result
 
 
 def make_handler(database: str | Path):
+    initialize_payday(database)
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: dict):
             body = json.dumps(payload).encode("utf-8")
@@ -306,7 +313,9 @@ def make_handler(database: str | Path):
             parsed = urlparse(self.path)
             try:
                 payload = self._payload() if self.command != "DELETE" else {}
-                if self.command == "POST" and parsed.path == "/api/transactions":
+                if self.command == 'POST' and parsed.path.startswith('/api/payday/'):
+                    self._json(200, save_payday(database, parsed.path.rsplit('/', 1)[1], payload))
+                elif self.command == "POST" and parsed.path == "/api/transactions":
                     self._json(201, {"id": save_transaction(database, payload)})
                 elif self.command == "PUT" and parsed.path.startswith("/api/transactions/"):
                     item_id = int(parsed.path.rsplit("/", 1)[1])

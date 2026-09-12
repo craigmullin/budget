@@ -1,4 +1,6 @@
 import {isCloud,cloudRequest,startCloud,downloadBackup} from './cloud.mjs';
+import {renderPayday} from './payday.mjs';
+import {budgetToday} from './payday-model.mjs';
 const money = cents => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format((cents||0)/100);
 const dateLabel = value => value ? new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`)) : 'No transactions';
 const amountClass = cents => cents < 0 ? 'negative' : '';
@@ -26,9 +28,9 @@ async function load(period) {
   render();
 }
 function render() {
-  view = ['home','envelopes','transactions','more'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
+  view = ['home','envelopes','transactions','budget','more'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
   document.querySelectorAll('[data-nav]').forEach(a => {if(a.dataset.nav===view) a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  document.querySelector('#page-title').textContent={home:'Current period',envelopes:'Envelopes',transactions:'Transactions',more:'Source & records'}[view];
+  document.querySelector('#page-title').textContent={home:'Current period',envelopes:'Envelopes',transactions:'Transactions',budget:'Payday Budget',more:'Source & records'}[view];
   document.querySelector('#page-kicker').textContent=view==='home'?'Your household ledger':'Budget · 2026';
   document.querySelector('#as-of').textContent=`${periodRange()} · Ledger through ${dateLabel(model.as_of)}`;
   const select=document.querySelector('#period');
@@ -49,6 +51,7 @@ function render() {
   document.querySelector('#year-summary').innerHTML=[['Income',money(model.summary.income_cents)],['Spent',money(model.summary.spending_cents)],['Ledger entries',model.summary.transaction_count.toLocaleString()]].map(([label,value])=>`<div><p>${label}</p><strong>${value}</strong></div>`).join('');
   document.querySelector('#exceptions').innerHTML=model.exceptions.map(e=>`<div class="exception"><span class="code">${esc(e.exception_code)}</span><p>${esc(e.description)}</p><p><strong>Resolution:</strong> ${esc(e.resolution)}</p><p class="source">${esc(e.source_sheet)}!${esc(e.source_cell)}${e.raw_value?` · raw ${esc(e.raw_value)}`:''}</p></div>`).join('');
   populateForms();
+  renderPayday(model,request,()=>load(model.selected_period.sequence),toast);
   if(detailId && document.querySelector('#envelope-dialog').open) renderDetail();
 }
 function transactionRows(rows) {
@@ -66,7 +69,7 @@ function renderDetail() {
   document.querySelector('#envelope-total').innerHTML=`<span class="${amountClass(e.ending_cents)}">${money(e.ending_cents)}</span> <small>available</small>`;
   document.querySelector('#envelope-breakdown').innerHTML=[['Starting balance',money(e.starting_cents)],['Budget',signedMoney(e.budget_cents)],['Spent',signedMoney(-e.actual_cents)],['Moved / source adjustments',signedMoney(e.moved_cents)],['Available',money(e.ending_cents)]].map(([label,value],i)=>`<div class="${i===4?'total':''}"><span>${label}</span><span class="${i===4?amountClass(e.ending_cents):''}">${value}</span></div>`).join('');
   document.querySelector('#envelope-transactions').innerHTML=transactionRows(model.period_transactions.filter(t=>t.category_id===e.id));
-  document.querySelector('#envelope-source').textContent=`${periodRange()} · Source: ${e.source.sheet}, row ${e.source.row}. Actual ${e.source.actual_cell}; envelope ${e.source.ending_cell}.`;
+  document.querySelector('#envelope-source').textContent=`${periodRange()} · Source: ${e.source.sheet}, row ${e.source.row}. Actual ${e.source.actual_cell}; envelope ${e.source.ending_cell}.${e.application_budget_cents?` Includes ${money(e.application_budget_cents)} of new application allocations; imported source values remain unchanged.`:''}`;
 }
 function populateForms() {
   const categories=model.categories.map(c=>`<option value="${c.id}">${esc(c.canonical_name)}</option>`).join('');
@@ -110,7 +113,7 @@ document.querySelector('#cloud-backup').addEventListener('click',()=>downloadBac
 document.querySelector('#move-money').addEventListener('click',()=>openMove(model.envelopes[0].id));
 document.querySelector('#detail-move').addEventListener('click',()=>openMove(detailId));
 document.querySelector('#move-amount').addEventListener('input',event=>{document.querySelector('#move-submit').textContent=Number(event.target.value)>0?`Move ${money(Math.round(Number(event.target.value)*100))}`:'Move money';});
-window.addEventListener('hashchange',()=>{if(model) render();});
+window.addEventListener('hashchange',()=>{if(!model)return;if(location.hash==='#budget'&&model.payday&&!model.payday.eligible){const today=budgetToday();const period=[...model.periods].reverse().find(p=>p.label_date<=today);if(period){load(period.sequence).catch(showError);return;}}render();});
 document.addEventListener('click',event=>{
   const edit=event.target.closest('[data-edit]'); if(edit) openTransaction([...model.transactions,...model.period_transactions].find(t=>String(t.id)===edit.dataset.edit));
   const detail=event.target.closest('[data-detail]'); if(detail){detailId=Number(detail.dataset.detail);renderDetail();document.querySelector('#envelope-dialog').showModal();}

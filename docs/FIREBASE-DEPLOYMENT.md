@@ -24,9 +24,19 @@ npm run test:rules
 python -m unittest discover -s tests -v
 ```
 
-The rules emulator uses `demo-budget`, not production. Java and Firebase CLI are required. Python workbook integration tests are skipped if the source XLSX is unavailable.
+The rules emulator uses `demo-budget`, not production. Java and Firebase CLI are required. Original Python workbook integration tests require the original approved fixture hash; a newer upload is not silently substituted. Set `BUDGET_BASELINE_XLSX` to the original XLSX if available.
 
 ## Deployment
+
+Pass 4 is prepared locally, not yet deployed. Before its first release, prepare the approved private configuration without modifying the workbook:
+
+```powershell
+python -m scripts.prepare-payday "C:/Users/cmullin/Downloads/Budget 2026.xlsx"
+```
+
+The command prints configuration JSON for inspection. Save the reviewed output to `.local/firebase/payday-config.json` (this task has already prepared that file). Never put it in the public Hosting folder. Run `node scripts/firebase-payday.cjs` once to add `seed/payday` with an exists-false precondition. It refuses to overwrite existing configuration and never resets transactions, moves, or source tables. Then deploy rules and Hosting together below. Do not rerun `cloud_export` against a locally edited database to replace the immutable production baseline.
+
+Pass 4's new `settings`, `sessions`, `extras`, and `expected` collections remain private. See PASS-4-IMPLEMENTATION.md for security/data boundaries and the parallel replay results.
 
 ```powershell
 firebase deploy --only firestore:rules,hosting --project budget-24acc
@@ -38,6 +48,6 @@ firebase deploy --only firestore:rules,hosting --project budget-24acc
 
 Use the hosted site after cutover. `localhost` deliberately remains the separate Python/SQLite reference app; local edits do not synchronize with Firebase. Never use both as the writable source of truth after cutover.
 
-Cloud records refresh after committed writes, via realtime change/move listeners, and on returning to the browser. Saving requires an internet connection; cloud caching is memory-only rather than persistent shared-computer storage. Sign out on shared devices.
+Cloud records refresh after committed writes, via realtime listeners for transactions, moves, defaults, sessions, extra allocations and expectations, and on returning to the browser. Saving requires an internet connection; cloud caching is memory-only rather than persistent shared-computer storage. Sign out on shared devices.
 
-Use More → Download household backup regularly and store the JSON privately. It includes the seed and current cloud edits/moves. Spark does not provide the paid automated-backup workflow. Monitor Hosting/Firestore quotas in the console; free-tier limits can interrupt service, not trigger a billing upgrade by this app.
+Use More → Download household backup regularly and store the JSON privately. Format v2 includes seed/configuration, edits/moves, defaults, sessions, extra allocations and expected income. Spark does not provide the paid automated-backup workflow. Monitor Hosting/Firestore quotas in the console; free-tier limits can interrupt service, not trigger a billing upgrade by this app.

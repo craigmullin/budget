@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from .payday import additions
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ def calculate_envelopes(connection: sqlite3.Connection) -> list[EnvelopeResult]:
     ).fetchall()
     balances = {row[0]: 0 for row in categories}
     results = []
+    supplemental = additions(connection)
     for period_id, start, end in periods:
         for (category_id,) in categories:
             if start is None:
@@ -41,6 +43,6 @@ def calculate_envelopes(connection: sqlite3.Connection) -> list[EnvelopeResult]:
                 "SELECT COALESCE(SUM(amount_cents),0) FROM envelope_movements WHERE allocation_period_id=? AND category_id=?",
                 (period_id, category_id),
             ).fetchone()[0]
-            balances[category_id] += allocation - actual + adjustment
+            balances[category_id] += allocation + supplemental.get((period_id, category_id), 0) - actual + adjustment
             results.append(EnvelopeResult(period_id, category_id, actual, balances[category_id]))
     return results

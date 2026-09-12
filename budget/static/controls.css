@@ -2,3 +2,21 @@ button{border:1px solid transparent;border-radius:5px;background:var(--oxblood);
 @media(max-width:520px){dialog{width:calc(100% - 20px);max-height:calc(100dvh - 20px);border-radius:6px}dialog form,.detail-content{padding:22px}.form-grid{grid-template-columns:1fr;gap:16px}.form-grid .wide{grid-column:auto}.dialog-actions{flex-wrap:wrap;gap:10px}.dialog-actions button[type=submit]{flex:1}.dialog-heading h2{font-size:25px}.dialog-actions .spacer{display:none}.dialog-actions .danger{margin-right:auto}}
 .login-panel{width:min(480px,calc(100% - 40px));margin:80px auto;min-height:320px}.login-panel .muted{margin:24px 0}.login-panel .form-error{margin-top:20px}
 @media(prefers-reduced-motion:reduce){#toast{transition:none}}
+/* Payday Budget follows the same ledger rules and phone-first controls. */
+.budget-row,.default-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--stone,#DDD6CB)}
+.budget-row small,.budget-secondary small{display:block;font-size:.8rem;margin-top:5px;color:var(--muted,#77706B)}
+.budget-row small.negative{color:var(--negative)}
+#budget-section>.actions{flex-wrap:wrap;margin:20px 0}
+.budget-secondary .activity-row{grid-template-columns:1fr auto auto auto}
+.budget-row label,.budget-secondary small{overflow-wrap:anywhere}
+.budget-row input,.default-row input{width:110px;flex:0 0 110px;text-align:right;font-variant-numeric:tabular-nums}
+.budget-summary{margin:24px 0;max-width:600px}
+.budget-secondary{margin-top:40px;padding-top:20px;border-top:1px solid var(--stone,#DDD6CB)}
+.budget-secondary h3{margin-top:28px}
+.session-date{display:block;max-width:220px}
+.expected-snapshot{white-space:pre-wrap;font:inherit;font-size:.85rem}
+#budget-dialog{max-height:85vh;overflow:auto}
+#budget-dialog label{display:block;margin:12px 0}
+#budget-dialog .default-row{display:flex}
+#draft-status{font-size:.85rem;color:var(--muted,#77706B)}
+@media(max-width:500px){.budget-row{gap:10px}.budget-row input,.default-row input{width:92px;flex-basis:92px}.budget-secondary .activity-row{grid-template-columns:1fr auto}.topbar nav{gap:12px}}

@@ -5,9 +5,9 @@ from pathlib import Path
 from budget.importer import import_2026
 from budget.ui import ValidationError, delete_transaction, move_money, read_model, save_transaction
 
-SOURCE = Path(r"C:\Users\cmullin\Downloads\Budget 2026.xlsx")
+from workbook_fixture import SOURCE, AVAILABLE, REASON
 
-@unittest.skipUnless(SOURCE.exists(), "Budget 2026 workbook fixture is not available")
+@unittest.skipUnless(AVAILABLE, REASON)
 class WritableUiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

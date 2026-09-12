@@ -1,8 +1,9 @@
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,serverTimestamp} from 'firebase/firestore';
+import {doc,setDoc,getDoc,serverTimestamp,writeBatch,Timestamp} from 'firebase/firestore';
 const env=await initializeTestEnvironment({projectId:'demo-budget',firestore:{host:'127.0.0.1',port:8088,rules:readFileSync('firestore.rules','utf8')}});
 try {
+  await env.clearFirestore();
   await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'households/main/seed/catalog'),{category_ids:[1,2],category_types:{'1':'expense','2':'income'},account_ids:[1],period_ids:[1],envelope_ids:[1,2],transaction_ids:['5'],valid_dates:['2026-01-01']}));
   const db=env.authenticatedContext('craig',{email:'creaghan1@gmail.com',email_verified:true}).firestore();
   const wife=env.authenticatedContext('wife',{email:'cmlmullin@gmail.com',email_verified:true}).firestore();
@@ -25,5 +26,38 @@ try {
   await assertFails(setDoc(doc(db,'households/main/moves/bad'),{...move,to_category_id:1}));
   await assertFails(setDoc(doc(db,'households/main/moves/bad'),{...move,amount_cents:-1}));
   await assertFails(setDoc(doc(outsider,'households/main/moves/bad'),move));
+  const allocations=Array.from({length:63},()=>0);allocations[0]=358360;
+  await env.withSecurityRulesDisabled(async c=>{
+    await setDoc(doc(c.firestore(),'households/main/seed/payday'),{envelope_ids:[1,2],periods:{'1':{start:'2026-01-01',end:'2026-01-15'}},date_millis:{'2026-01-01':Date.parse('2026-01-01')}});
+  });
+  const draft={period_id:1,session_date:'2026-01-01',status:'draft',allocations,available_cents:319900,expected_cents:62000,expected_summary:'Wife payday',revision:1,updated_by:'craig',updated_at:serverTimestamp()};
+  async function certifiedWrite(database,path,data){const batch=writeBatch(database);for(let i=0;i<7;i++)batch.set(doc(database,`${path}/checks/${i}`),{allocations:data.allocations,revision:data.revision});batch.set(doc(database,path),data);return batch.commit();}
+  await assertSucceeds(certifiedWrite(db,'households/main/sessions/1',draft));
+  await assertSucceeds(getDoc(doc(wife,'households/main/sessions/1')));
+  await assertFails(setDoc(doc(db,'households/main/sessions/1'),{...draft,revision:2})); // Missing atomic certificates.
+  await assertFails(setDoc(doc(wife,'households/main/sessions/1'),{...draft,updated_by:'wife'}));
+  await assertFails(setDoc(doc(db,'households/main/sessions/2'),{...draft,period_id:2}));
+  await assertFails(setDoc(doc(db,'households/main/sessions/1'),{...draft,revision:2,allocations:[1]}));
+  const invalid=[...allocations];invalid[62]=1.1;
+  await assertFails(certifiedWrite(db,'households/main/sessions/1',{...draft,revision:2,allocations:invalid}));
+  for(const bad of [-1,100000001]){const values=[...allocations];values[62]=bad;await assertFails(certifiedWrite(db,'households/main/sessions/1',{...draft,revision:2,allocations:values}));}
+  await assertFails(setDoc(doc(db,'households/main/sessions/1'),{...draft,revision:2,allocated_cents:1}));
+  await assertSucceeds(certifiedWrite(wife,'households/main/sessions/1',{...draft,revision:2,status:'completed',updated_by:'wife'}));
+  await assertFails(setDoc(doc(db,'households/main/sessions/1'),{...draft,revision:3}));
+  await assertFails(setDoc(doc(outsider,'households/main/sessions/1'),draft));
+  const defaults={allocations,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
+  await assertSucceeds(certifiedWrite(db,'households/main/settings/defaults',defaults));
+  await assertFails(setDoc(doc(db,'households/main/settings/other'),defaults));
+  await assertFails(certifiedWrite(db,'households/main/settings/defaults',{...defaults,revision:2,allocations:invalid}));
+  const extra={period_id:1,category_id:1,amount_cents:10000,allocation_date:'2026-01-01',allocation_at:Timestamp.fromMillis(Date.parse('2026-01-01')),description:'Birthday gift allocation',created_by:'craig',created_at:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(db,'households/main/extras/gift'),extra));
+  await assertFails(setDoc(doc(db,'households/main/extras/gift'),extra));
+  await assertFails(setDoc(doc(db,'households/main/extras/bad'),{...extra,period_id:2}));
+  await assertFails(setDoc(doc(db,'households/main/extras/bad'),{...extra,amount_cents:0}));
+  const expectation={source:'Wife payday',amount_cents:62000,expected_date:'2026-01-01',note:'Projection only',status:'pending',revision:1,updated_by:'craig',updated_at:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(db,'households/main/expected/wife'),expectation));
+  await assertSucceeds(setDoc(doc(wife,'households/main/expected/wife'),{...expectation,status:'received',revision:2,updated_by:'wife'}));
+  await assertFails(setDoc(doc(db,'households/main/expected/bad'),{...expectation,amount_cents:-1}));
   console.log('PASS: household access, immutable source, revision conflicts, transaction validation, and linked moves.');
+  console.log('PASS: shared drafts, once-per-period immutable completion, defaults, extra allocations, and separate expected income.');
 }finally{await env.cleanup();}
