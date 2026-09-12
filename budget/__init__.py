@@ -1,2 +1,1 @@
-"""Budget (M.B) migration and calculation core."""
-
+"""Budget migration and calculation core."""

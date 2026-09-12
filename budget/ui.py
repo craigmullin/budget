@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import mimetypes
 import sqlite3
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -10,81 +12,287 @@ from urllib.parse import parse_qs, urlparse
 from .calculations import calculate_envelopes
 
 STATIC = Path(__file__).with_name("static")
+APP_SOURCE_SHEET = "M.B App"
+
+
+class ValidationError(ValueError):
+    pass
+
+
+def _connect(database: str | Path, *, readonly: bool = False) -> sqlite3.Connection:
+    path = Path(database).resolve()
+    connection = sqlite3.connect(f"file:{path}?mode={'ro' if readonly else 'rw'}", uri=True)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    return connection
+
+
+def _required_text(payload: dict, field: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError(f"{field.replace('_', ' ')} is required")
+    return value.strip()
+
+
+def _integer(payload: dict, field: str) -> int:
+    value = payload.get(field)
+    if isinstance(value, bool):
+        raise ValidationError(f"{field.replace('_', ' ')} must be an integer")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"{field.replace('_', ' ')} must be an integer") from None
+
+
+def _amount_cents(payload: dict) -> int:
+    if "amount_cents" in payload:
+        amount = _integer(payload, "amount_cents")
+    else:
+        raw = str(payload.get("amount", "")).replace("$", "").replace(",", "").strip()
+        try:
+            value = Decimal(raw)
+        except InvalidOperation:
+            raise ValidationError("amount must be a valid dollar amount") from None
+        if not value.is_finite() or value.as_tuple().exponent < -2:
+            raise ValidationError("amount must have at most two decimal places")
+        amount = int(value * 100)
+    if amount == 0:
+        raise ValidationError("amount must not be zero")
+    return amount
+
+
+def _iso_date(payload: dict) -> str:
+    raw = _required_text(payload, "transaction_date")
+    try:
+        parsed = date.fromisoformat(raw)
+    except ValueError:
+        raise ValidationError("transaction date must be a valid date") from None
+    if parsed.year != 2026:
+        raise ValidationError("transaction date must be in 2026")
+    return parsed.isoformat()
+
+
+def _lookup(connection: sqlite3.Connection, table: str, item_id: int) -> sqlite3.Row:
+    row = connection.execute(f"SELECT * FROM {table} WHERE id=?", (item_id,)).fetchone()
+    if row is None:
+        raise ValidationError(f"unknown {table[:-1]}")
+    return row
+
+
+def _transaction_type(category_type: str, amount_cents: int) -> str:
+    if category_type in ("income", "currency"):
+        return "income"
+    if category_type == "carryover":
+        return "carryover"
+    if category_type == "transfer":
+        return "transfer"
+    return "refund_credit" if amount_cents < 0 else "expense"
+
+
+def _next_source_row(connection: sqlite3.Connection, table: str) -> int:
+    return connection.execute(
+        f"SELECT COALESCE(MAX(source_row),0)+1 FROM {table} WHERE source_sheet=?", (APP_SOURCE_SHEET,)
+    ).fetchone()[0]
+
+
+def _batch_id(connection: sqlite3.Connection) -> str:
+    row = connection.execute("SELECT id FROM import_batches ORDER BY imported_at DESC LIMIT 1").fetchone()
+    if row is None:
+        raise ValidationError("the 2026 workbook must be imported before making changes")
+    return row[0]
+
+
+def save_transaction(database: str | Path, payload: dict, transaction_id: int | None = None) -> int:
+    connection = _connect(database)
+    try:
+        transaction_date = _iso_date(payload)
+        description = str(payload.get("description") or "").strip() or None
+        category = _lookup(connection, "categories", _integer(payload, "category_id"))
+        account = _lookup(connection, "accounts", _integer(payload, "account_id"))
+        amount = _amount_cents(payload)
+        kind = _transaction_type(category["category_type"], amount)
+        if transaction_id is None:
+            cursor = connection.execute(
+                """INSERT INTO transactions
+                   (transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,
+                    source_year,source_workbook,source_sheet,source_row,raw_category,raw_account,raw_description,import_batch_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (transaction_date, description, category["id"], account["id"], amount, str(Decimal(amount) / 100), kind,
+                 2026, APP_SOURCE_SHEET, APP_SOURCE_SHEET, _next_source_row(connection, "transactions"),
+                 category["canonical_name"], account["canonical_name"], description, _batch_id(connection)),
+            )
+            transaction_id = cursor.lastrowid
+        else:
+            if connection.execute("SELECT id FROM transactions WHERE id=?", (transaction_id,)).fetchone() is None:
+                raise ValidationError("transaction not found")
+            connection.execute(
+                """UPDATE transactions SET transaction_date=?,description=?,category_id=?,account_id=?,amount_cents=?,
+                   raw_amount=?,transaction_type=?,raw_category=?,raw_account=?,raw_description=? WHERE id=?""",
+                (transaction_date, description, category["id"], account["id"], amount, str(Decimal(amount) / 100), kind,
+                 category["canonical_name"], account["canonical_name"], description, transaction_id),
+            )
+        connection.commit()
+        return transaction_id
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def delete_transaction(database: str | Path, transaction_id: int) -> None:
+    connection = _connect(database)
+    try:
+        if connection.execute("DELETE FROM transactions WHERE id=?", (transaction_id,)).rowcount != 1:
+            raise ValidationError("transaction not found")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def move_money(database: str | Path, payload: dict) -> None:
+    connection = _connect(database)
+    try:
+        period = _lookup(connection, "allocation_periods", _integer(payload, "period_id"))
+        from_category = _lookup(connection, "categories", _integer(payload, "from_category_id"))
+        to_category = _lookup(connection, "categories", _integer(payload, "to_category_id"))
+        if from_category["id"] == to_category["id"]:
+            raise ValidationError("source and destination envelopes must be different")
+        amount = _amount_cents(payload)
+        if amount < 0:
+            raise ValidationError("move amount must be positive")
+        eligible = {row[0] for row in connection.execute(
+            "SELECT category_id FROM budget_allocations WHERE allocation_period_id=?", (period["id"],)
+        )}
+        if from_category["id"] not in eligible or to_category["id"] not in eligible:
+            raise ValidationError("money can only be moved between envelopes in the selected period")
+        description = str(payload.get("description") or "").strip() or "Moved in Budget"
+        source_row = _next_source_row(connection, "envelope_movements")
+        batch = _batch_id(connection)
+        for category_id, signed_amount in ((from_category["id"], -amount), (to_category["id"], amount)):
+            connection.execute(
+                """INSERT INTO envelope_movements
+                   (allocation_period_id,category_id,amount_cents,source_year,source_workbook,source_sheet,
+                    source_row,source_cell,raw_description,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (period["id"], category_id, signed_amount, 2026, APP_SOURCE_SHEET, APP_SOURCE_SHEET,
+                 source_row, "App move", description, batch),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
 
 def read_model(database: str | Path, period_sequence: int | None = None) -> dict:
-    connection = sqlite3.connect(f"file:{Path(database).resolve()}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
-    periods = connection.execute("SELECT id,sequence,label_date,calculation_end_date_exclusive FROM allocation_periods ORDER BY sequence").fetchall()
+    connection = _connect(database, readonly=True)
+    periods = connection.execute("SELECT id,sequence,label_date,calculation_start_date,calculation_end_date_exclusive FROM allocation_periods ORDER BY sequence").fetchall()
+    if not periods:
+        connection.close()
+        raise ValidationError("no allocation periods are available")
     latest_date = connection.execute("SELECT MAX(transaction_date) FROM transactions").fetchone()[0]
     if period_sequence is None:
-        selected = next((p for p in periods if latest_date < p["calculation_end_date_exclusive"]), periods[-1])
+        selected = next((p for p in periods if latest_date and latest_date < p["calculation_end_date_exclusive"]), periods[-1])
     else:
         selected = next((p for p in periods if p["sequence"] == period_sequence), periods[-1])
     calculations = {(r.period_id, r.category_id): r for r in calculate_envelopes(connection)}
-    envelope_rows = connection.execute(
-        """SELECT c.id,c.canonical_name,b.amount_cents,s.actual_source_cell,s.ending_source_cell,
-                  c.source_sheet,c.source_row
+    rows = connection.execute(
+        """SELECT c.id,c.canonical_name,b.amount_cents,s.actual_source_cell,s.ending_source_cell,c.source_sheet,c.source_row
            FROM budget_allocations b JOIN categories c ON c.id=b.category_id
            JOIN source_parity_values s ON s.category_id=c.id AND s.allocation_period_id=b.allocation_period_id
-           WHERE b.allocation_period_id=? ORDER BY c.display_order""",
-        (selected["id"],),
+           WHERE b.allocation_period_id=? ORDER BY c.display_order""", (selected["id"],)
     ).fetchall()
     envelopes = []
-    for row in envelope_rows:
+    for row in rows:
         calc = calculations[(selected["id"], row["id"])]
-        envelopes.append({
-            "category": row["canonical_name"], "budget_cents": row["amount_cents"],
-            "actual_cents": calc.actual_cents, "ending_cents": calc.ending_envelope_cents,
-            "source": {"sheet": row["source_sheet"], "row": row["source_row"],
-                       "actual_cell": row["actual_source_cell"], "ending_cell": row["ending_source_cell"]},
-        })
+        moved = connection.execute("SELECT COALESCE(SUM(amount_cents),0) FROM envelope_movements WHERE allocation_period_id=? AND category_id=?", (selected["id"], row["id"])).fetchone()[0]
+        envelopes.append({"id": row["id"], "category": row["canonical_name"], "budget_cents": row["amount_cents"],
+                          "actual_cents": calc.actual_cents, "ending_cents": calc.ending_envelope_cents,
+                          "moved_cents": moved, "starting_cents": calc.ending_envelope_cents - row["amount_cents"] + calc.actual_cents - moved,
+                          "source": {"sheet": row["source_sheet"], "row": row["source_row"],
+                                     "actual_cell": row["actual_source_cell"], "ending_cell": row["ending_source_cell"]}})
     transactions = [dict(r) for r in connection.execute(
-        """SELECT transaction_date,description,raw_category,amount_cents,raw_amount,transaction_type,
-                  raw_account,source_sheet,source_row
-           FROM transactions ORDER BY transaction_date DESC,source_row DESC LIMIT 100"""
+        """SELECT id,transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,
+                  raw_category,raw_account,source_sheet,source_row
+           FROM transactions ORDER BY transaction_date DESC,id DESC LIMIT 100"""
     ).fetchall()]
+    period_transactions = [dict(r) for r in connection.execute(
+        """SELECT id,transaction_date,description,category_id,account_id,amount_cents,transaction_type,
+                  raw_category,raw_account,source_sheet,source_row
+           FROM transactions WHERE transaction_date < ? AND (? IS NULL OR transaction_date >= ?)
+           ORDER BY transaction_date DESC,id DESC""",
+        (selected["calculation_end_date_exclusive"], selected["calculation_start_date"], selected["calculation_start_date"]),
+    )]
     exceptions = [dict(r) for r in connection.execute(
         "SELECT exception_code,amount_cents,raw_value,description,resolution,source_sheet,source_row,source_cell FROM migration_exceptions ORDER BY id"
     ).fetchall()]
-    true_income = connection.execute("SELECT COALESCE(SUM(amount_cents),0) FROM transactions WHERE transaction_type='income'").fetchone()[0]
-    spending = connection.execute("SELECT COALESCE(SUM(amount_cents),0) FROM transactions WHERE transaction_type IN ('expense','refund_credit')").fetchone()[0]
     result = {
-        "product": "M.B", "year": 2026, "as_of": latest_date,
-        "summary": {"income_cents": true_income, "spending_cents": spending,
-                    "ending_envelope_cents": sum(e["ending_cents"] for e in envelopes),
-                    "transaction_count": connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]},
-        "periods": [{"sequence": p["sequence"], "label_date": p["label_date"]} for p in periods],
-        "selected_period": {"sequence": selected["sequence"], "label_date": selected["label_date"]},
-        "envelopes": envelopes, "transactions": transactions, "exceptions": exceptions,
+        "product": "B.", "year": 2026, "as_of": latest_date,
+        "period_summary": {
+            "income_cents": sum(t["amount_cents"] or 0 for t in period_transactions if t["transaction_type"] == "income"),
+            "spending_cents": sum(t["amount_cents"] or 0 for t in period_transactions if t["transaction_type"] in ("expense", "refund_credit")),
+        },
+        "summary": {
+            "income_cents": connection.execute("SELECT COALESCE(SUM(amount_cents),0) FROM transactions WHERE transaction_type='income'").fetchone()[0],
+            "spending_cents": connection.execute("SELECT COALESCE(SUM(amount_cents),0) FROM transactions WHERE transaction_type IN ('expense','refund_credit')").fetchone()[0],
+            "ending_envelope_cents": sum(e["ending_cents"] for e in envelopes),
+            "transaction_count": connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0],
+        },
+        "periods": [{"id": p["id"], "sequence": p["sequence"], "label_date": p["label_date"]} for p in periods],
+        "selected_period": {"id": selected["id"], "sequence": selected["sequence"], "label_date": selected["label_date"],
+                            "end_date_exclusive": selected["calculation_end_date_exclusive"]},
+        "categories": [dict(r) for r in connection.execute("SELECT id,canonical_name,category_type FROM categories ORDER BY display_order")],
+        "accounts": [dict(r) for r in connection.execute("SELECT id,canonical_name FROM accounts ORDER BY canonical_name")],
+        "envelopes": envelopes, "transactions": transactions, "period_transactions": period_transactions, "exceptions": exceptions,
     }
     connection.close()
     return result
 
+
 def make_handler(database: str | Path):
     class Handler(BaseHTTPRequestHandler):
+        def _json(self, status: int, payload: dict):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _payload(self) -> dict:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                raise ValidationError("invalid content length") from None
+            if length <= 0 or length > 64_000:
+                raise ValidationError("a JSON request body is required")
+            try:
+                payload = json.loads(self.rfile.read(length))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                raise ValidationError("request body must be valid JSON") from None
+            if not isinstance(payload, dict):
+                raise ValidationError("request body must be a JSON object")
+            return payload
+
         def do_GET(self):
             parsed = urlparse(self.path)
             if parsed.path == "/api/model":
                 requested = parse_qs(parsed.query).get("period", [None])[0]
                 try:
                     payload = read_model(database, int(requested) if requested else None)
-                except ValueError:
-                    self.send_error(400, "period must be an integer")
+                except ValueError as error:
+                    self._json(400, {"error": str(error) or "period must be an integer"})
                     return
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                self._json(200, payload)
                 return
             relative = "index.html" if parsed.path == "/" else parsed.path.lstrip("/")
             target = (STATIC / relative).resolve()
-            if STATIC.resolve() not in target.parents and target != STATIC.resolve():
-                self.send_error(404)
-                return
-            if not target.is_file():
+            if (STATIC.resolve() not in target.parents and target != STATIC.resolve()) or not target.is_file():
                 self.send_error(404)
                 return
             body = target.read_bytes()
@@ -94,15 +302,39 @@ def make_handler(database: str | Path):
             self.end_headers()
             self.wfile.write(body)
 
-        def do_POST(self):
-            self.send_error(405, "Budget Pass 2 is read-only")
+        def _write(self):
+            parsed = urlparse(self.path)
+            try:
+                payload = self._payload() if self.command != "DELETE" else {}
+                if self.command == "POST" and parsed.path == "/api/transactions":
+                    self._json(201, {"id": save_transaction(database, payload)})
+                elif self.command == "PUT" and parsed.path.startswith("/api/transactions/"):
+                    item_id = int(parsed.path.rsplit("/", 1)[1])
+                    save_transaction(database, payload, item_id)
+                    self._json(200, {"id": item_id})
+                elif self.command == "DELETE" and parsed.path.startswith("/api/transactions/"):
+                    delete_transaction(database, int(parsed.path.rsplit("/", 1)[1]))
+                    self._json(200, {"deleted": True})
+                elif self.command == "POST" and parsed.path == "/api/moves":
+                    move_money(database, payload)
+                    self._json(201, {"moved": True})
+                else:
+                    self._json(404, {"error": "not found"})
+            except (ValidationError, ValueError) as error:
+                self._json(400, {"error": str(error)})
+            except sqlite3.Error:
+                self._json(500, {"error": "the change could not be saved"})
+
+        do_POST = _write
+        do_PUT = _write
+        do_DELETE = _write
 
         def log_message(self, format, *args):
             pass
     return Handler
 
+
 def serve(database: str | Path, host: str = "127.0.0.1", port: int = 8765):
     server = ThreadingHTTPServer((host, port), make_handler(database))
-    print(f"M.B read-only UI: http://{host}:{port}")
+    print(f"Budget writable UI: http://{host}:{port}")
     server.serve_forever()
-

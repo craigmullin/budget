@@ -1,9 +1,9 @@
 # Budget
 
 - Responsibility: home budgeting
-- Product mark: M.B
+- Product mark: B. (Signature Orange period)
 - Repository: `git@github.com:craigmullin/budget.git`
-- Lifecycle: Pass 2; read-only 2026 UI implemented locally
+- Lifecycle: Pass 3; persistent writable 2026 UI implemented locally
 - Production URL: unknown
 - Hosting: unknown
-- Design relationship: future consumer of Design guidance
+- Design authority: `docs/UI-VISUAL-DESIGN-HANDOFF.md`

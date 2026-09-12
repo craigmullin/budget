@@ -1,6 +1,6 @@
 # Budget
 
-Budget is the home-budgeting product; M.B is its product mark.
+Budget is the home-budgeting product; B. is its product mark, with a Signature Orange period.
 
 Pass 1 implements only the historical-migration core for the authoritative 2026 workbook:
 
@@ -10,7 +10,7 @@ Pass 1 implements only the historical-migration core for the authoritative 2026 
 - automated unit/integration tests; and
 - a temporary Markdown/JSON parity report.
 
-Pass 2 adds a read-only 2026 browser UI over the proven data layer. There is no write functionality and no import support for years before 2026 yet.
+Pass 3 adds persistent transaction entry/edit/delete and envelope-to-envelope money moves to the 2026 browser UI. Changes are stored in SQLite and immediately flow through the proven calculation layer. Budget sessions, reconciliation, and imports before 2026 remain out of scope.
 
 Run Pass 1:
 
@@ -24,14 +24,12 @@ Run tests:
 python -m unittest discover -s tests -v
 ```
 
-Start the read-only UI after running Pass 1:
+Start the writable UI after running Pass 1:
 
 ```powershell
 python -m budget.cli serve
 ```
 
-Budget is the future home-budgeting product in the HQ-managed portfolio. It is
-part of the shared M.* family as M.B and uses Budget Teal when an accessible
-canonical value is approved in Design.
+The authoritative visual direction is in `docs/UI-VISUAL-DESIGN-HANDOFF.md`: a warm, editorial household ledger with cream paper, oxblood accents, and the B. mark. Existing source metadata retains its original identifiers.
 
 See `PROJECT.md` and `NOW.md` for the verified state.

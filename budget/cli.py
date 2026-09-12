@@ -15,7 +15,7 @@ def main(argv=None):
     run.add_argument("--database", default=".local/pass1/budget-2026.sqlite3")
     run.add_argument("--report", default="reports/2026-parity.md")
     run.add_argument("--json", default=".local/pass1/2026-parity.json")
-    ui = sub.add_parser("serve", help="Serve the read-only 2026 UI")
+    ui = sub.add_parser("serve", help="Serve the writable 2026 UI")
     ui.add_argument("--database", default=".local/pass1/budget-2026.sqlite3")
     ui.add_argument("--host", default="127.0.0.1")
     ui.add_argument("--port", default=8765, type=int)

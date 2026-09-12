@@ -3,32 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="M.B read-only 2026 budget view">
-  <title>M.B — 2026 Budget</title>
+  <meta name="description" content="Budget — a beautifully organized household ledger">
+  <meta name="theme-color" content="#F7F3EB">
+  <title>Budget — 2026</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/controls.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="mark" href="#top" aria-label="M.B home">M.B</a>
-    <div><p class="eyebrow">Budget · 2026</p><h1>Your money, as recorded.</h1></div>
-    <div class="readonly"><span aria-hidden="true"></span>Read only</div>
+    <a class="mark" href="#home" aria-label="Budget home">B<span>.</span></a>
+    <span class="brand-name">Budget</span>
+    <nav aria-label="Primary navigation"><a href="#home" data-nav="home">Home</a><a href="#envelopes" data-nav="envelopes">Envelopes</a><a href="#transactions" data-nav="transactions">Transactions</a><a href="#more" data-nav="more">More</a></nav>
+    <span class="local-status">Saved locally</span>
   </header>
   <main id="top">
-    <section class="intro" aria-labelledby="overview-title">
-      <div><p class="kicker">2026 overview</p><h2 id="overview-title">A faithful view of the workbook.</h2><p id="as-of" class="muted">Loading source data…</p></div>
+    <section class="intro">
+      <div><p class="kicker" id="page-kicker">Your household ledger</p><h1 id="page-title">Current period</h1><p id="as-of" class="muted">Loading budget…</p></div>
       <label class="period-label">Allocation period<select id="period" aria-label="Allocation period"></select></label>
     </section>
-    <section id="summary" class="summary" aria-label="Budget summary"></section>
-    <section class="panel">
-      <div class="panel-heading"><div><p class="kicker">Envelope plan</p><h2>Budget, actual, and remaining</h2></div><input id="envelope-filter" type="search" placeholder="Filter envelopes" aria-label="Filter envelopes"></div>
-      <div class="table-wrap"><table><thead><tr><th>Envelope</th><th>Budget</th><th>Actual</th><th>Remaining</th></tr></thead><tbody id="envelopes"></tbody></table></div>
+    <section id="summary" class="summary" aria-label="Current period summary"></section>
+    <section id="envelope-section" class="panel">
+      <div class="panel-heading"><div><p class="kicker">Envelope balances</p><h2 id="envelope-heading">A place for every dollar.</h2></div><div class="actions"><input id="envelope-filter" type="search" placeholder="Find an envelope" aria-label="Find an envelope"><button id="move-money" class="secondary" type="button">Move money</button></div></div>
+      <div id="envelopes" class="envelope-list"></div>
+      <a class="section-link" id="all-envelopes" href="#envelopes">View all envelopes <span aria-hidden="true">→</span></a>
     </section>
-    <section class="grid">
-      <article class="panel"><div class="panel-heading"><div><p class="kicker">Recent activity</p><h2>Ledger</h2></div><span class="muted">Latest 100</span></div><div id="transactions" class="activity"></div></article>
-      <aside class="panel"><div class="panel-heading"><div><p class="kicker">Audit trail</p><h2>Migration exceptions</h2></div></div><div id="exceptions" class="exceptions"></div></aside>
+    <section id="transaction-section" class="panel">
+      <div class="panel-heading"><div><p class="kicker">Household ledger</p><h2 id="ledger-heading">Recent transactions</h2></div><div class="actions"><span id="ledger-note" class="muted">Latest entries</span><button id="add-transaction" type="button">Add transaction</button></div></div>
+      <div id="transactions" class="activity"></div>
+      <a class="section-link" id="all-transactions" href="#transactions">View transactions <span aria-hidden="true">→</span></a>
+    </section>
+    <section id="more-section" class="panel hidden">
+      <div class="panel-heading"><div><p class="kicker">Source & records</p><h2>2026 at a glance</h2></div></div><div id="year-summary" class="year-summary"></div>
+      <details class="audit"><summary>Migration exceptions <span class="muted">Preserved source notes</span></summary><div id="exceptions" class="exceptions"></div></details>
+      <p class="form-help">Budget Session, reconciliation, trips, and historical imports are not part of this version.</p>
     </section>
   </main>
-  <footer>Imported from Budget 2026.xlsx · Source rows and raw values preserved</footer>
+  <dialog id="envelope-dialog" aria-labelledby="envelope-title"><div class="detail-content"><div class="dialog-heading"><p class="kicker">Envelope detail</p><button class="icon-button" type="button" data-close aria-label="Close envelope detail">×</button></div><h2 id="envelope-title"></h2><p id="envelope-total" class="detail-total"></p><div id="envelope-breakdown" class="breakdown"></div><div class="detail-actions"><button id="detail-move" type="button">Move money</button></div><h3>Transactions this period</h3><div id="envelope-transactions" class="activity"></div><p id="envelope-source" class="source"></p></div></dialog>
+  <dialog id="transaction-dialog" aria-labelledby="transaction-title"><form id="transaction-form"><div class="dialog-heading"><div><p class="kicker">Household ledger</p><h2 id="transaction-title">Add transaction</h2></div><button class="icon-button" type="button" data-close aria-label="Close transaction form">×</button></div><input id="transaction-id" type="hidden"><div class="form-grid"><label>Date<input id="transaction-date" type="date" min="2026-01-01" max="2026-12-31" required></label><label>Amount<input id="transaction-amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" required></label><label class="wide">Description<input id="transaction-description" maxlength="250" autocomplete="off"></label><label>Envelope / category<select id="transaction-category" required></select></label><label>Account<select id="transaction-account" required></select></label></div><p class="form-help">Positive for spending or income. Negative for a refund or credit.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button id="delete-transaction" class="danger hidden" type="button">Delete</button><span class="spacer"></span><button class="secondary" type="button" data-close>Cancel</button><button type="submit">Save transaction</button></div></form></dialog>
+  <dialog id="move-dialog" aria-labelledby="move-title"><form id="move-form"><div class="dialog-heading"><div><p class="kicker">Envelope plan</p><h2 id="move-title">Move money</h2></div><button class="icon-button" type="button" data-close aria-label="Close move form">×</button></div><div class="form-grid"><label class="wide">From<select id="move-from" required></select></label><label class="wide">To<select id="move-to" required></select></label><label>Amount<input id="move-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required></label><label>Description<input id="move-description" maxlength="250" placeholder="Optional note"></label></div><p class="form-help" id="move-period"></p><p class="form-error" role="alert"></p><div class="dialog-actions"><span class="spacer"></span><button class="secondary" type="button" data-close>Cancel</button><button id="move-submit" type="submit">Move money</button></div></form></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <footer><span>Budget · 2026</span><span>Stored on this computer · Based on Budget 2026.xlsx</span></footer>
   <script src="/app.js" defer></script>
 </body>
 </html>
