@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,serverTimestamp,writeBatch,Timestamp} from 'firebase/firestore';
+import {doc,setDoc,getDoc,serverTimestamp,writeBatch,Timestamp,updateDoc} from 'firebase/firestore';
 const env=await initializeTestEnvironment({projectId:'demo-budget',firestore:{host:'127.0.0.1',port:8088,rules:readFileSync('firestore.rules','utf8')}});
 try {
   await env.clearFirestore();
@@ -19,7 +19,7 @@ try {
   await assertFails(getDoc(doc(outsider,archive)));await assertFails(getDoc(doc(unverified,archive)));
   await assertFails(setDoc(doc(db,archive),{table:'transactions',rows:[]}));
   await assertFails(setDoc(doc(db,'households/main/seed/active_source'),{version:'test-version'}));
-  const change={id:'5',transaction_date:'2026-01-01',description:'Food',category_id:1,account_id:1,amount_cents:1234,transaction_type:'expense',deleted:false,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
+  const change={id:'5',transaction_date:'2026-01-01',description:'Food',notes:'Receipt',vacation_trip:'Test Trip',vacation_type:'Food',category_id:1,account_id:1,amount_cents:1234,transaction_type:'expense',deleted:false,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
   await assertSucceeds(setDoc(doc(db,'households/main/changes/5'),change));
   await assertFails(setDoc(doc(db,'households/main/changes/5'),{...change,revision:1}));
   await assertFails(setDoc(doc(db,'households/main/changes/5'),{...change,revision:2,amount_cents:1.5}));
@@ -27,7 +27,7 @@ try {
   await assertFails(setDoc(doc(db,'households/main/changes/5'),{...change,revision:2,transaction_date:'2026-02-30'}));
   await assertSucceeds(setDoc(doc(db,'households/main/changes/5'),{id:'5',deleted:true,revision:2,updated_by:'craig',updated_at:serverTimestamp()}));
   const slots=active=>[...active.map(a=>({...a,active:true})),...Array.from({length:6-active.length},()=>({category_id:0,amount_cents:0,active:false}))];
-  const split={id:'app_split',transaction_date:'2026-01-01',description:'Walmart',category_id:1,account_id:1,amount_cents:3283,transaction_type:'expense',allocation_count:2,allocations:slots([{category_id:1,amount_cents:2354},{category_id:2,amount_cents:929}]),deleted:false,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
+  const split={id:'app_split',transaction_date:'2026-01-01',description:'Walmart',notes:'',vacation_trip:'',vacation_type:'',category_id:1,account_id:1,amount_cents:3283,transaction_type:'expense',allocation_count:2,allocations:slots([{category_id:1,amount_cents:2354},{category_id:2,amount_cents:929}]),deleted:false,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
   await assertSucceeds(setDoc(doc(db,'households/main/changes/app_split'),split));
   await assertSucceeds(getDoc(doc(wife,'households/main/changes/app_split')));
   await assertFails(setDoc(doc(db,'households/main/changes/app_under'),{...split,id:'app_under',amount_cents:3282}));
@@ -73,6 +73,18 @@ try {
   await assertSucceeds(setDoc(doc(db,'households/main/expected/wife'),expectation));
   await assertSucceeds(setDoc(doc(wife,'households/main/expected/wife'),{...expectation,status:'received',revision:2,updated_by:'wife'}));
   await assertFails(setDoc(doc(db,'households/main/expected/bad'),{...expectation,amount_cents:-1}));
+  await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'households/main/seed/sheet_sync'),{enabled:true}));
+  const queued={...change,id:'app_queued',revision:1};
+  await assertFails(setDoc(doc(db,'households/main/changes/app_queued'),queued));
+  const syncBatch=writeBatch(db);
+  syncBatch.set(doc(db,'households/main/changes/app_queued'),queued);
+  syncBatch.set(doc(db,'households/main/sheet_sync/app_queued_1'),{transaction_id:'app_queued',operation:'create',transaction_revision:1,requested_at:serverTimestamp(),requested_by_uid:'craig',status:'pending',attempt_count:0,payload_version:1});
+  await assertSucceeds(syncBatch.commit());
+  await assertSucceeds(getDoc(doc(wife,'households/main/sheet_sync/app_queued_1')));
+  await assertFails(updateDoc(doc(db,'households/main/sheet_sync/app_queued_1'),{status:'synced'}));
+  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'households/main/sheet_sync/app_queued_1'),{status:'failed',error_code:'TEST'}));
+  await assertSucceeds(updateDoc(doc(wife,'households/main/sheet_sync/app_queued_1'),{status:'pending',retry_requested_by:'wife',retry_requested_at:serverTimestamp()}));
   console.log('PASS: household access, immutable source, revision conflicts, transaction validation, and linked moves.');
   console.log('PASS: shared drafts, once-per-period immutable completion, defaults, extra allocations, and separate expected income.');
+  console.log('PASS: transaction writes require an atomic Sheet job when sync is enabled; clients cannot mark jobs synced.');
 }finally{await env.cleanup();}

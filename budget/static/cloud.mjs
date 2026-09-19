@@ -1,14 +1,16 @@
 import {buildModel,effectiveData,parseAmount} from './cloud-model.mjs';
 import {applyAllocations,paydayState,budgetToday} from './payday-model.mjs';
 import {flushPayday} from './payday.mjs';
+import {attachSyncState,syncJobId} from './sheet-sync-model.mjs';
 export const isCloud=!['localhost','127.0.0.1','[::1]'].includes(location.hostname);
-let sdk,auth,db,seed,changes=[],moves=[],unsubscribers=[];
+let sdk,auth,db,seed,changes=[],moves=[],sheetSyncJobs=[],unsubscribers=[];
 let config=null,settings=[],sessions=[],extras=[],expected=[];
+let sheetSyncConfig=null;
 const root='households/main';
-const collections=['changes','moves','settings','sessions','extras','expected'];
-function receive(name,rows){if(name==='changes')changes=rows;else if(name==='moves')moves=rows;else if(name==='settings')settings=rows;else if(name==='sessions')sessions=rows;else if(name==='extras')extras=rows;else expected=rows;}
+const collections=['changes','moves','settings','sessions','extras','expected','sheet_sync'];
+function receive(name,rows){if(name==='changes')changes=rows;else if(name==='moves')moves=rows;else if(name==='settings')settings=rows;else if(name==='sessions')sessions=rows;else if(name==='extras')extras=rows;else if(name==='expected')expected=rows;else sheetSyncJobs=rows;}
 async function refresh(){await Promise.all(collections.map(async name=>{const s=await sdk.getDocs(sdk.collection(db,`${root}/${name}`));receive(name,s.docs.map(d=>({...d.data(),id:d.id})));}));}
-function householdModel(sequence){const data=effectiveData(seed,changes,moves);const model=buildModel(applyAllocations(data,config,sessions,extras),sequence);model.payday=paydayState(data,config,model.selected_period.id,settings,sessions,extras,expected);return model;}
+function householdModel(sequence){const data=effectiveData(seed,changes,moves);const model=buildModel(applyAllocations(data,config,sessions,extras),sequence);model.payday=paydayState(data,config,model.selected_period.id,settings,sessions,extras,expected);return attachSyncState(model,sheetSyncJobs,sheetSyncConfig?.enabled===true);}
 async function paydayWrite(url,p){
   if(!config)throw new Error('Payday Budget configuration is unavailable.');
   if(url==='/api/payday/extras'){
@@ -45,7 +47,12 @@ export async function cloudRequest(url,options={}) {
   if(method==='GET') return householdModel(new URL(url,location.origin).searchParams.get('period'));
   if(!navigator.onLine)throw new Error('Connect to the internet before saving changes.');
   const p=options.body?JSON.parse(options.body):{};
-  if(url.startsWith('/api/payday/'))await paydayWrite(url,p);
+  if(url==='/api/sheet-sync/retry'){
+    if(!sheetSyncConfig?.enabled)throw new Error('Google Sheet sync is not enabled.');
+    const job=sheetSyncJobs.find(j=>j.id===p.job_id);
+    if(!job||job.status!=='failed')throw new Error('Only a failed sync can be retried.');
+    await sdk.updateDoc(sdk.doc(db,`${root}/sheet_sync/${job.id}`),{status:'pending',retry_requested_at:sdk.serverTimestamp(),retry_requested_by:auth.currentUser.uid});
+  } else if(url.startsWith('/api/payday/'))await paydayWrite(url,p);
   else if(url==='/api/moves') {
     const amount=parseAmount(p.amount),eligible=id=>seed.budget_allocations.some(b=>b.category_id===id&&b.allocation_period_id===p.period_id);
     if(amount<0||p.from_category_id===p.to_category_id||!eligible(p.from_category_id)||!eligible(p.to_category_id)) throw new Error('Choose different envelopes and a positive amount.');
@@ -57,6 +64,7 @@ export async function cloudRequest(url,options={}) {
       if(method!=='POST'&&revision!==(p.expected_revision??changes.find(t=>t.id===id)?.revision??0)) throw new Error('This transaction changed on another device. Reload before editing it.');
       if(method!=='POST'&&!seed.transactions.some(t=>String(t.id)===id)&&(!old||old.deleted)) throw new Error('Transaction not found.');
       const common={id,revision:revision+1,updated_by:auth.currentUser.uid,updated_at:sdk.serverTimestamp()};
+      let operation=method==='DELETE'?'delete':method==='POST'?'create':'update';
       if(method==='DELETE') tx.set(reference,{...common,deleted:true});
       else {
         const amount=parseAmount(p.amount),inputAllocations=p.allocations;
@@ -72,7 +80,13 @@ export async function cloudRequest(url,options={}) {
         if(!/^2026-\d{2}-\d{2}$/.test(p.transaction_date)||new Date(`${p.transaction_date}T00:00:00Z`).toISOString().slice(0,10)!==p.transaction_date) throw new Error('Choose a valid date in 2026.');
         const kind=['income','currency'].includes(category.category_type)?'income':['carryover','transfer'].includes(category.category_type)?category.category_type:amount<0?'refund_credit':'expense';
         const splitFields=inputAllocations?{allocation_count:inputAllocations.length,allocations:[...inputAllocations.map(a=>({...a,active:true})),...Array.from({length:6-inputAllocations.length},()=>({category_id:0,amount_cents:0,active:false}))]}:{};
-        tx.set(reference,{...common,transaction_date:p.transaction_date,description:p.description||'',category_id:category.id,account_id:p.account_id,amount_cents:amount,transaction_type:kind,deleted:false,...splitFields});
+        const notes=String(p.notes||'').trim(),vacation_trip=String(p.vacation_trip||'').trim(),vacation_type=String(p.vacation_type||'').trim();
+        if(notes.length>500||vacation_trip.length>100||vacation_type&&!['Flights','Hotel','Transportation','Attractions','Food','Souvenirs','Misc'].includes(vacation_type)||vacation_type&&!vacation_trip)throw new Error('Check the Notes and Vacation fields.');
+        tx.set(reference,{...common,transaction_date:p.transaction_date,description:p.description||'',notes,vacation_trip,vacation_type,category_id:category.id,account_id:p.account_id,amount_cents:amount,transaction_type:kind,deleted:false,...splitFields});
+      }
+      if(sheetSyncConfig?.enabled===true){
+        const job=sdk.doc(db,`${root}/sheet_sync/${syncJobId(id,common.revision)}`);
+        tx.set(job,{transaction_id:id,operation,transaction_revision:common.revision,requested_at:sdk.serverTimestamp(),requested_by_uid:auth.currentUser.uid,status:'pending',attempt_count:0,payload_version:1});
       }
     });
   }
@@ -92,7 +106,7 @@ export async function startCloud(onReady,onError) {
   document.querySelector('footer').lastElementChild.textContent='Private household records · Synced with Firebase';
   authSdk.onAuthStateChanged(auth,async user=>{
     unsubscribers.forEach(stop=>stop());unsubscribers=[];
-    seed=null;config=null;changes=[];moves=[];settings=[];sessions=[];extras=[];expected=[];main.classList.add('hidden');login.classList.remove('hidden');document.querySelectorAll('dialog[open]').forEach(d=>d.close());
+    seed=null;config=null;sheetSyncConfig=null;changes=[];moves=[];settings=[];sessions=[];extras=[];expected=[];sheetSyncJobs=[];main.classList.add('hidden');login.classList.remove('hidden');document.querySelectorAll('dialog[open]').forEach(d=>d.close());
     window.dispatchEvent(new Event('budget-account-reset'));
     document.querySelector('#cloud-signout').classList.toggle('hidden',!user);
     if(!user)return;
@@ -103,7 +117,7 @@ export async function startCloud(onReady,onError) {
       const source=active?.version
         ?await sdk.getDocs(sdk.collection(db,`${root}/source_versions/${active.version}/seed`))
         :snapshot;
-      for(const d of snapshot.docs)if(d.id==='payday')config=d.data();
+      for(const d of snapshot.docs){if(d.id==='payday')config=d.data();if(d.id==='sheet_sync')sheetSyncConfig=d.data();}
       for(const d of source.docs){const r=d.data();if(r.table)(seed[r.table]??=[]).push(...r.rows);}
       if(!seed.allocation_periods?.length)throw new Error('Household data migration is not yet complete.');
       await refresh();
@@ -122,6 +136,6 @@ export async function startCloud(onReady,onError) {
 export async function downloadBackup() {
   if(!seed)throw new Error('Sign in before exporting a backup.');
   await refresh();
-  const blob=new Blob([JSON.stringify({format:'budget-firestore-v3',exported_at:new Date().toISOString(),seed,config,changes,moves,settings,sessions,extras,expected})],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({format:'budget-firestore-v4',exported_at:new Date().toISOString(),seed,config,sheetSyncConfig,changes,moves,settings,sessions,extras,expected,sheetSyncJobs})],{type:'application/json'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`budget-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }

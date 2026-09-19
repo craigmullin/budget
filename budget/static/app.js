@@ -14,6 +14,8 @@ let transactionSplits=null;
 let remainderIndex=null;
 let transactionCreateId=null;
 let transactionDetail=null;
+let transactionAccountFilter='';
+let transactionLimit='100';
 const signedMoney = cents => `${cents > 0 ? '+' : ''}${money(cents)}`;
 const periodRange = () => {
   const end = new Date(`${model.selected_period.end_date_exclusive}T00:00:00Z`);
@@ -33,9 +35,9 @@ async function load(period) {
   render();
 }
 function render() {
-  view = ['home','envelopes','transactions','budget','more'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
-  document.querySelectorAll('[data-nav]').forEach(a => {if(a.dataset.nav===view) a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  document.querySelector('#page-title').textContent={home:'Current period',envelopes:'Envelopes',transactions:'Transactions',budget:'Payday Budget',more:'Source & records'}[view];
+  view = ['home','envelopes','transactions','budget','vacation','more'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
+  document.querySelectorAll('[data-nav]').forEach(a => {if(a.dataset.nav===view||(view==='vacation'&&a.dataset.nav==='more')) a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  document.querySelector('#page-title').textContent={home:'Current period',envelopes:'Envelopes',transactions:'Transactions',budget:'Payday Budget',vacation:'Vacation',more:'Source & records'}[view];
   document.querySelector('#page-kicker').textContent=view==='home'?'Your household ledger':'Budget · 2026';
   document.querySelector('#as-of').textContent=`${periodRange()} · Ledger through ${dateLabel(model.as_of)}`;
   const select=document.querySelector('#period');
@@ -46,21 +48,40 @@ function render() {
   document.querySelector('#envelope-section').classList.toggle('hidden',!['home','envelopes'].includes(view));
   document.querySelector('#transaction-section').classList.toggle('hidden',!['home','transactions'].includes(view));
   document.querySelector('#more-section').classList.toggle('hidden',view!=='more');
+  document.querySelector('#vacation-section').classList.toggle('hidden',view!=='vacation');
   document.querySelector('#envelope-filter').classList.toggle('hidden',view==='home');
   document.querySelector('#all-envelopes').classList.toggle('hidden',view!=='home');
   document.querySelector('#all-transactions').classList.toggle('hidden',view!=='home');
+  document.querySelector('#transaction-filters').classList.toggle('hidden',view!=='transactions');
   document.querySelector('#ledger-heading').textContent=view==='transactions'?'Your transaction ledger':'Recent transactions';
-  document.querySelector('#ledger-note').textContent=view==='transactions'?'Latest 100':'Latest 6';
+  const accountFilter=document.querySelector('#transaction-account-filter');
+  accountFilter.innerHTML='<option value="">All accounts</option>'+model.accounts.map(a=>`<option value="${a.id}">${esc(a.canonical_name)}</option>`).join('');
+  accountFilter.value=transactionAccountFilter;
+  document.querySelector('#transaction-limit').value=transactionLimit;
   renderEnvelopes();
-  document.querySelector('#transactions').innerHTML=transactionRows(view==='home'?model.transactions.slice(0,6):model.transactions);
+  renderTransactions();
   document.querySelector('#year-summary').innerHTML=[['Income',money(model.summary.income_cents)],['Spent',money(model.summary.spending_cents)],['Ledger entries',model.summary.transaction_count.toLocaleString()]].map(([label,value])=>`<div><p>${label}</p><strong>${value}</strong></div>`).join('');
   document.querySelector('#exceptions').innerHTML=model.exceptions.map(e=>`<div class="exception"><span class="code">${esc(e.exception_code)}</span><p>${esc(e.description)}</p><p><strong>Resolution:</strong> ${esc(e.resolution)}</p><p class="source">${esc(e.source_sheet)}!${esc(e.source_cell)}${e.raw_value?` · raw ${esc(e.raw_value)}`:''}</p></div>`).join('');
+  const sync=model.sheet_sync;document.querySelector('#sheet-sync-summary').innerHTML=sync?.enabled?`<p><strong>Google Sheet sync</strong></p><p class="muted">${sync.pending} pending · ${sync.failed} failed${sync.last_synced_at?` · Last synced ${esc(new Date(sync.last_synced_at.seconds?sync.last_synced_at.seconds*1000:sync.last_synced_at).toLocaleString())}`:''}</p>`:'<p><strong>Google Sheet sync</strong></p><p class="muted">Not enabled</p>';
   populateForms();
+  document.querySelector('#vacation-summary').innerHTML=model.vacation.trips.length?model.vacation.trips.map(trip=>{const rows=model.vacation.rows.filter(r=>r.vacation_trip===trip),total=rows.reduce((s,r)=>s+r.amount_cents,0);return `<div class="exception"><h3>${esc(trip)}</h3>${rows.map(r=>`<p><strong>${esc(r.vacation_type)}:</strong> ${money(r.amount_cents)}</p>`).join('')}<p><strong>Total:</strong> ${money(total)}</p></div>`}).join(''):'<p class="empty">No vacation spending recorded yet.</p>';
   renderPayday(model,request,()=>load(model.selected_period.sequence),toast);
   if(detailId && document.querySelector('#envelope-dialog').open) renderDetail();
 }
 function transactionRows(rows) {
   return rows.length ? rows.map(t=>`<div class="activity-row"><div><p>${esc(t.description||'No description')}</p><p class="detail">${dateLabel(t.transaction_date)} · ${esc(t.raw_category||'Uncategorized')} · ${esc(t.raw_account||'No account')}</p></div><span class="amount">${money(t.amount_cents)}</span><div class="activity-actions"><button class="text-action" type="button" data-transaction="${t.id}" aria-label="View ${esc(t.description||'transaction')}">View</button><button class="text-action" type="button" data-edit="${t.id}" aria-label="Edit ${esc(t.description||'transaction')}">Edit</button></div></div>`).join('') : '<p class="empty">No transactions to show.</p>';
+}
+function renderTransactions(){
+  if(view==='home'){
+    document.querySelector('#ledger-note').textContent='Latest 6';
+    document.querySelector('#transactions').innerHTML=transactionRows(model.transactions.slice(0,6));
+    return;
+  }
+  const filtered=transactionAccountFilter?model.transactions.filter(t=>String(t.account_id)===transactionAccountFilter):model.transactions;
+  const shown=transactionLimit==='all'?filtered:filtered.slice(0,Number(transactionLimit));
+  const accountName=transactionAccountFilter?model.accounts.find(a=>String(a.id)===transactionAccountFilter)?.canonical_name:'all accounts';
+  document.querySelector('#ledger-note').textContent=`Showing ${shown.length.toLocaleString()} of ${filtered.length.toLocaleString()} · ${accountName}`;
+  document.querySelector('#transactions').innerHTML=transactionRows(shown);
 }
 function renderEnvelopes() {
   const q=document.querySelector('#envelope-filter').value.trim().toLowerCase();
@@ -84,6 +105,8 @@ function populateForms() {
   const envelopes=model.envelopes.map(e=>`<option value="${e.id}">${esc(e.category)} · ${money(e.ending_cents)}</option>`).join('');
   document.querySelector('#move-from').innerHTML=envelopes;
   document.querySelector('#move-to').innerHTML=envelopes;
+  document.querySelector('#vacation-trips').innerHTML=model.vacation.trips.map(t=>`<option value="${esc(t)}"></option>`).join('');
+  document.querySelector('#transaction-vacation-type').innerHTML='<option value="">Not a vacation expense</option>'+model.vacation.types.map(t=>`<option value="${t}">${t}</option>`).join('');
 }
 function openTransaction(item) {
   transactionRevision=item?.revision||0;
@@ -96,6 +119,7 @@ function openTransaction(item) {
   document.querySelector('#transaction-date').value=item?.transaction_date||model.as_of||'2026-01-01';
   document.querySelector('#transaction-amount').value=item ? (item.amount_cents/100).toFixed(2) : '';
   document.querySelector('#transaction-description').value=item?.description||'';
+  document.querySelector('#transaction-notes').value=item?.notes||'';document.querySelector('#transaction-vacation-trip').value=item?.vacation_trip||'';document.querySelector('#transaction-vacation-type').value=item?.vacation_type||'';
   if(item){document.querySelector('#transaction-category').value=item.category_id;document.querySelector('#transaction-account').value=item.account_id;}
   transactionSplits=item?.allocations?.length?item.allocations.map(a=>({category_id:a.category_id,raw:(a.amount_cents/100).toFixed(2)})):null;
   remainderIndex=null;
@@ -109,7 +133,7 @@ function splitOptions(selected,index){const used=new Set(transactionSplits.map((
 function updateSplitSummary(){if(!transactionSplits)return;const state=splitValues(),summary=document.querySelector('#split-summary');document.querySelectorAll('[data-remainder-value]').forEach(el=>{const amount=transactionSplits[Number(el.dataset.remainderValue)].amount_cents||0;el.textContent=money(amount);el.classList.toggle('negative',amount<0);});const label=state.remainder_cents<0?`${money(-state.remainder_cents)} over`:state.remaining===null?'Enter the transaction total':state.remaining===0?'$0.00 remaining':state.remaining>0?`${money(state.remaining)} remaining`:`${money(-state.remaining)} over`;summary.innerHTML=`<span>Remaining</span><strong>${label}</strong>`;summary.classList.toggle('over',state.remainder_cents<0||state.remaining!==null&&state.remaining<0);document.querySelector('#save-transaction').disabled=!state.valid||state.remaining!==0;}
 function renderSplitEditor(){const active=!!transactionSplits;document.querySelector('#split-editor').classList.toggle('hidden',!active);document.querySelector('#split-transaction').classList.toggle('hidden',active);document.querySelector('#single-category').classList.toggle('hidden',active);document.querySelector('#transaction-category').required=!active;if(!active){document.querySelector('#save-transaction').disabled=false;return;}document.querySelector('#split-rows').innerHTML=transactionSplits.map((row,i)=>`<div class="split-row"><label>Envelope<select data-split-category="${i}" required>${splitOptions(row.category_id,i)}</select></label><label>Amount${i===remainderIndex?`<span class="remainder-value" data-remainder-value="${i}">${money(row.amount_cents||0)}</span>`:`<input data-split-amount="${i}" inputmode="decimal" value="${esc(row.raw||'')}" placeholder="0.00" required>`}</label><div class="row-actions"><button class="text-action" data-remainder="${i}" type="button">${i===remainderIndex?'Fixed amount':'Use remainder'}</button><button class="text-action" data-remove-split="${i}" type="button" ${transactionSplits.length<=2?'disabled':''}>Remove</button></div></div>`).join('');document.querySelector('#add-split').disabled=transactionSplits.length>=6;updateSplitSummary();}
 function beginSplit(){const category=Number(document.querySelector('#transaction-category').value);if(!category){document.querySelector('#transaction-form .form-error').textContent='Choose an envelope before splitting.';return;}transactionSplits=[{category_id:category,raw:''},{category_id:model.categories.find(c=>c.category_type==='expense'&&c.id!==category)?.id,raw:''}];remainderIndex=0;renderSplitEditor();}
-function showTransactionDetail(item){transactionDetail=item;document.querySelector('#transaction-detail-title').textContent=item.description||'No description';document.querySelector('#transaction-detail-total').textContent=money(item.amount_cents);document.querySelector('#transaction-detail-meta').textContent=`${dateLabel(item.transaction_date)} · ${item.raw_account||'No account'}`;const rows=item.allocations?.length?item.allocations:[{category:item.raw_category||'Uncategorized',amount_cents:item.amount_cents}];document.querySelector('#transaction-detail-splits').innerHTML=rows.map((a,i)=>`<div class="${i===rows.length-1?'total':''}"><span>${esc(a.category)}</span><span>${money(a.amount_cents)}</span></div>`).join('');document.querySelector('#transaction-detail-dialog').showModal();}
+function showTransactionDetail(item){transactionDetail=item;document.querySelector('#transaction-detail-title').textContent=item.description||'No merchant';document.querySelector('#transaction-detail-total').textContent=money(item.amount_cents);document.querySelector('#transaction-detail-meta').textContent=`${dateLabel(item.transaction_date)} · ${item.raw_account||'No account'}`;document.querySelector('#transaction-detail-extra').textContent=[item.notes,item.vacation_trip&&item.vacation_type?`${item.vacation_trip} · ${item.vacation_type}`:item.vacation_trip].filter(Boolean).join(' · ');const sync=item.sheet_sync,label=sync?({pending:'Pending Sheet sync',processing:'Syncing to Google Sheet',synced:'Synced to Google Sheet',failed:`Sheet sync failed${sync.error_code?` · ${sync.error_code}`:''}`}[sync.status]||'Sheet sync status unavailable'):'';document.querySelector('#transaction-sync-status').textContent=label;document.querySelector('#transaction-sync-retry').classList.toggle('hidden',sync?.status!=='failed');const rows=item.allocations?.length?item.allocations:[{category:item.raw_category||'Uncategorized',amount_cents:item.amount_cents}];document.querySelector('#transaction-detail-splits').innerHTML=rows.map((a,i)=>`<div class="${i===rows.length-1?'total':''}"><span>${esc(a.category)}</span><span>${money(a.amount_cents)}</span></div>`).join('');document.querySelector('#transaction-detail-dialog').showModal();}
 function openMove(fromId) {
   document.querySelector('#envelope-dialog').close();
   const form=document.querySelector('#move-form'); form.reset(); form.querySelector('.form-error').textContent='';
@@ -124,6 +148,8 @@ function busy(form,value){form.querySelectorAll('button').forEach(button=>button
 
 document.querySelector('#period').addEventListener('change',e=>load(e.target.value).catch(showError));
 document.querySelector('#envelope-filter').addEventListener('input',renderEnvelopes);
+document.querySelector('#transaction-account-filter').addEventListener('change',event=>{transactionAccountFilter=event.target.value;renderTransactions();});
+document.querySelector('#transaction-limit').addEventListener('change',event=>{transactionLimit=event.target.value;renderTransactions();});
 document.querySelector('#add-transaction').addEventListener('click',()=>openTransaction());
 document.querySelector('#cloud-backup').classList.toggle('hidden',!isCloud);
 document.querySelector('#cloud-backup').addEventListener('click',()=>downloadBackup().catch(error=>toast(error.message)));
@@ -135,6 +161,7 @@ document.querySelector('#split-transaction').addEventListener('click',beginSplit
 document.querySelector('#add-split').addEventListener('click',()=>{if(transactionSplits.length<6){transactionSplits.push({category_id:model.categories.find(c=>c.category_type==='expense'&&!transactionSplits.some(r=>r.category_id===c.id))?.id,raw:''});renderSplitEditor();}});
 document.querySelector('#use-one-envelope').addEventListener('click',()=>{if(transactionSplits.some((r,i)=>i>0&&parsePositiveCents(r.raw))&&!confirm('Use one envelope and discard the other split amounts?'))return;document.querySelector('#transaction-category').value=transactionSplits[0].category_id;transactionSplits=null;remainderIndex=null;renderSplitEditor();});
 document.querySelector('#transaction-detail-edit').addEventListener('click',()=>openTransaction(transactionDetail));
+document.querySelector('#transaction-sync-retry').addEventListener('click',async()=>{const job=transactionDetail?.sheet_sync;if(!job)return;try{await request('/api/sheet-sync/retry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:job.id})});await load(model.selected_period.sequence);showTransactionDetail([...model.transactions,...model.period_transactions].find(t=>String(t.id)===String(transactionDetail.id)));toast('Sheet sync queued again');}catch(error){toast(error.message);}});
 window.addEventListener('hashchange',()=>{if(!model)return;if(location.hash==='#budget'&&model.payday&&!model.payday.eligible){const today=budgetToday();const period=[...model.periods].reverse().find(p=>p.label_date<=today);if(period){load(period.sequence).catch(showError);return;}}render();});
 document.addEventListener('click',event=>{
   const edit=event.target.closest('[data-edit]'); if(edit) openTransaction([...model.transactions,...model.period_transactions].find(t=>String(t.id)===edit.dataset.edit));
@@ -150,7 +177,7 @@ document.addEventListener('change',event=>{if(event.target.matches('[data-split-
 document.querySelector('#transaction-form').addEventListener('submit',async event=>{
   event.preventDefault(); const form=event.currentTarget; busy(form,true); form.querySelector('.form-error').textContent='';
   const id=document.querySelector('#transaction-id').value;
-  const payload={transaction_date:document.querySelector('#transaction-date').value,amount:document.querySelector('#transaction-amount').value,description:document.querySelector('#transaction-description').value,category_id:Number(document.querySelector('#transaction-category').value),account_id:Number(document.querySelector('#transaction-account').value)};
+  const payload={transaction_date:document.querySelector('#transaction-date').value,amount:document.querySelector('#transaction-amount').value,description:document.querySelector('#transaction-description').value,notes:document.querySelector('#transaction-notes').value,vacation_trip:document.querySelector('#transaction-vacation-trip').value,vacation_type:document.querySelector('#transaction-vacation-type').value,category_id:Number(document.querySelector('#transaction-category').value),account_id:Number(document.querySelector('#transaction-account').value)};
   if(transactionSplits){const state=splitValues();if(!state.valid||state.remaining!==0){form.querySelector('.form-error').textContent=state.remaining<0?`${money(-state.remaining)} over`:`Split amounts must equal ${money(state.total)}`;busy(form,false);updateSplitSummary();return;}payload.allocations=transactionSplits.map(r=>({category_id:r.category_id,amount_cents:r.amount_cents}));payload.category_id=payload.allocations[0].category_id;}
   else if(!id)payload.id=transactionCreateId;
   if(isCloud)payload.expected_revision=transactionRevision;

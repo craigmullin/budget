@@ -112,3 +112,30 @@ class PersistentModelTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 save_transaction(self.database, self.payload(amount='10.00', allocations=allocations))
         self.assertEqual(read_model(self.database, 2)['summary']['transaction_count'], 0)
+
+    def test_notes_and_vacation_breakdown_persist_and_validate(self):
+        item = save_transaction(self.database, self.payload(
+            description='Hilton', notes='Conference hotel', vacation_trip='Chicago 2026', vacation_type='Hotel'
+        ))
+        model = read_model(self.database, 2)
+        transaction = model['transactions'][0]
+        self.assertEqual(transaction['description'], 'Hilton')
+        self.assertEqual(transaction['notes'], 'Conference hotel')
+        self.assertEqual(transaction['vacation_trip'], 'Chicago 2026')
+        self.assertEqual(transaction['vacation_type'], 'Hotel')
+        self.assertEqual(model['vacation']['trips'], ['Chicago 2026'])
+        self.assertEqual(model['vacation']['rows'], [{
+            'vacation_trip': 'Chicago 2026', 'vacation_type': 'Hotel', 'amount_cents': 1234
+        }])
+        save_transaction(self.database, self.payload(
+            amount='5.00', description='Cafe', notes='Lunch', vacation_trip='Chicago 2026', vacation_type='Food'
+        ), item)
+        self.assertEqual(read_model(self.database, 2)['vacation']['rows'], [{
+            'vacation_trip': 'Chicago 2026', 'vacation_type': 'Food', 'amount_cents': 500
+        }])
+        for changes in [
+            {'vacation_type': 'Hotel'},
+            {'vacation_trip': 'Chicago 2026', 'vacation_type': 'Unknown'},
+        ]:
+            with self.assertRaises(ValidationError):
+                save_transaction(self.database, self.payload(**changes))

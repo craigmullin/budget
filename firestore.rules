@@ -55,12 +55,39 @@ service cloud.firestore {
         && (id in catalog().transaction_ids || id.matches('app_[a-zA-Z0-9-]+'))
         && ((d.deleted == true && d.keys().hasOnly(['id','deleted','revision','updated_by','updated_at']))
           || (d.deleted == false
-            && d.keys().hasOnly(['id','transaction_date','description','category_id','account_id','amount_cents','transaction_type','allocation_count','allocations','deleted','revision','updated_by','updated_at'])
+            && d.keys().hasOnly(['id','transaction_date','description','notes','vacation_trip','vacation_type','category_id','account_id','amount_cents','transaction_type','allocation_count','allocations','deleted','revision','updated_by','updated_at'])
             && d.transaction_date in catalog().valid_dates
             && d.description is string && d.description.size() <= 250
+            && d.notes is string && d.notes.size() <= 500
+            && d.vacation_trip is string && d.vacation_trip.size() <= 100
+            && d.vacation_type is string && (d.vacation_type == '' || d.vacation_type in ['Flights','Hotel','Transportation','Attractions','Food','Souvenirs','Misc'])
+            && (d.vacation_type == '' || d.vacation_trip.size() > 0)
             && d.category_id in catalog().category_ids && d.account_id in catalog().account_ids
             && d.amount_cents is int && d.amount_cents != 0 && d.amount_cents >= -100000000 && d.amount_cents <= 100000000
             && validType(d) && (!('allocations' in d) || validSplits(d))));
+    }
+    function sheetSyncEnabled() {
+      return exists(/databases/$(database)/documents/households/main/seed/sheet_sync)
+        && get(/databases/$(database)/documents/households/main/seed/sheet_sync).data.enabled == true;
+    }
+    function pairedSyncJob(id, revision) {
+      let job = getAfter(/databases/$(database)/documents/households/main/sheet_sync/$(id + '_' + string(revision))).data;
+      return job.transaction_id == id && job.transaction_revision == revision
+        && job.requested_by_uid == request.auth.uid && job.requested_at == request.time
+        && job.status == 'pending' && job.attempt_count == 0 && job.payload_version == 1
+        && job.operation in ['create','update','delete'];
+    }
+    function validSyncJob(id) {
+      let d = request.resource.data;
+      let change = getAfter(/databases/$(database)/documents/households/main/changes/$(d.transaction_id)).data;
+      return id == d.transaction_id + '_' + string(d.transaction_revision)
+        && d.keys().hasOnly(['transaction_id','operation','transaction_revision','requested_at','requested_by_uid','status','attempt_count','payload_version'])
+        && d.transaction_id is string && d.transaction_revision is int && d.transaction_revision > 0
+        && d.requested_at == request.time && d.requested_by_uid == request.auth.uid
+        && d.status == 'pending' && d.attempt_count == 0 && d.payload_version == 1
+        && d.operation in ['create','update','delete']
+        && change.id == d.transaction_id && change.revision == d.transaction_revision
+        && (d.operation == 'delete' ? change.deleted == true : change.deleted == false);
     }
     match /households/main/seed/{id} { allow read: if member(); allow write: if false; }
     // Workbook refreshes are immutable archives selected by an administrator-only seed pointer.
@@ -70,8 +97,21 @@ service cloud.firestore {
     match /households/main/changes/{id} {
       allow read: if member();
       allow create: if member() && validChange(id) && request.resource.data.revision == 1
-        && (request.resource.data.deleted == false || id in catalog().transaction_ids);
-      allow update: if member() && validChange(id) && request.resource.data.revision == resource.data.revision + 1;
+        && (request.resource.data.deleted == false || id in catalog().transaction_ids)
+        && (!sheetSyncEnabled() || pairedSyncJob(id,request.resource.data.revision));
+      allow update: if member() && validChange(id) && request.resource.data.revision == resource.data.revision + 1
+        && (!sheetSyncEnabled() || pairedSyncJob(id,request.resource.data.revision));
+      allow delete: if false;
+    }
+    match /households/main/sheet_sync/{id} {
+      allow read: if member();
+      allow create: if member() && sheetSyncEnabled() && validSyncJob(id);
+      // A household member may only requeue a failed job. The trusted worker uses
+      // Google Cloud IAM and is solely responsible for processing/synced/failed fields.
+      allow update: if member() && resource.data.status == 'failed' && request.resource.data.status == 'pending'
+        && request.resource.data.retry_requested_by == request.auth.uid
+        && request.resource.data.retry_requested_at == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','retry_requested_by','retry_requested_at']);
       allow delete: if false;
     }
     match /households/main/moves/{id} {

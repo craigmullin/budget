@@ -77,6 +77,8 @@ CREATE TABLE transactions (
     reconciled_date TEXT,
     cleared_marker TEXT,
     notes TEXT,
+    vacation_trip TEXT,
+    vacation_type TEXT,
     source_year INTEGER NOT NULL,
     source_workbook TEXT NOT NULL,
     source_sheet TEXT NOT NULL,

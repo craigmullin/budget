@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {desiredRows,planReconciliation,reconciliationReport} from '../sync/sheet-sync-core.mjs';
+import {attachSyncState,syncJobId} from '../budget/static/sheet-sync-model.mjs';
+
+const names={'1':'Food','2':'Home'},accounts={'7':'Checking'};
+const base={id:'app_a',revision:2,deleted:false,transaction_date:'2026-09-18',description:'Store',notes:'Receipt',vacation_trip:'Chicago 2026',vacation_type:'Food',category_id:1,account_id:7,amount_cents:1250};
+assert.equal(syncJobId('app_a',2),'app_a_2');
+assert.deepEqual(desiredRows(base,names,accounts).map(r=>[r.split_id,r.amount_cents]),[['app_a:single',1250]]);
+assert.deepEqual(Object.fromEntries(Object.entries(desiredRows(base,names,accounts)[0]).filter(([key])=>['description','notes','vacation_trip','vacation_type'].includes(key))),{description:'Store',notes:'Receipt',vacation_trip:'Chicago 2026',vacation_type:'Food'});
+const split={...base,amount_cents:1250,allocations:[{category_id:1,amount_cents:900,active:true},{category_id:2,amount_cents:350,active:true},{category_id:0,amount_cents:0,active:false}]};
+const wanted=desiredRows(split,names,accounts);assert.deepEqual(wanted.map(r=>r.split_id),['app_a:category:1','app_a:category:2']);assert.equal(wanted.reduce((s,r)=>s+r.amount_cents,0),1250);
+let plan=planReconciliation(wanted,[]);assert.equal(plan.create.length,2);
+const existing=[{...wanted[0],row:12,revision:1,amount_cents:800},{...wanted[0],row:13,revision:1},{split_id:'app_a:category:9',transaction_id:'app_a',row:14,revision:1,amount_cents:25}];
+plan=planReconciliation(wanted,existing);assert.equal(plan.create.length,1);assert.equal(plan.duplicate.length,1);assert.equal(plan.retire.length,2);
+assert.deepEqual(new Set(reconciliationReport(wanted,existing).map(f=>f.code)),new Set(['missing_row','duplicate_row','stale_row','incorrect_amount','orphaned_row','total_mismatch']));
+assert.deepEqual(desiredRows({...base,deleted:true},names,accounts),[]);
+const model={transactions:[{id:'app_a'}],period_transactions:[{id:'app_a'}]};attachSyncState(model,[{id:'app_a_1',transaction_id:'app_a',transaction_revision:1,status:'failed'},{id:'app_a_2',transaction_id:'app_a',transaction_revision:2,status:'pending'}],true);assert.equal(model.transactions[0].sheet_sync.status,'pending');assert.equal(model.sheet_sync.pending,1);
+const worker=readFileSync('apps-script/Code.gs','utf8');new Function(worker);
+assert.match(worker,/getRange\(row,9,1,3\)/);assert.match(worker,/getRange\(row,12,1,6\)/);assert.match(worker,/ensureVacationTrip_\(d\.vacation_trip\)/);assert.doesNotMatch(worker,/deleteRow\(/);
+console.log('Sheet sync model tests passed.');

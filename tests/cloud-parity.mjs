@@ -25,6 +25,10 @@ assert.equal(splitTx.amount_cents,3283);assert.equal(splitTx.allocations.length,
 const baseSplitModel=buildModel(seed,p.sequence);
 assert.equal(splitModel.envelopes.find(e=>e.id===envelopeIds[0]).ending_cents,baseSplitModel.envelopes.find(e=>e.id===envelopeIds[0]).ending_cents-2354);
 assert.equal(splitModel.envelopes.find(e=>e.id===envelopeIds[1]).ending_cents,baseSplitModel.envelopes.find(e=>e.id===envelopeIds[1]).ending_cents-929);
+const vacation=effectiveData(seed,[{id:'app_vacation',transaction_date:p.calculation_start_date,description:'Hilton',notes:'Conference hotel',vacation_trip:'Chicago 2026',vacation_type:'Hotel',account_id:seed.accounts[0].id,category_id:envelopeIds[0],amount_cents:1234,transaction_type:'expense'}]);
+const vacationModel=buildModel(vacation,p.sequence);
+assert.ok(vacationModel.vacation.trips.includes('Chicago 2026'));
+assert.deepEqual(vacationModel.vacation.rows.find(r=>r.vacation_trip==='Chicago 2026'),{vacation_trip:'Chicago 2026',vacation_type:'Hotel',amount_cents:1234});
 const moved=effectiveData(seed,[],[{period_id:p.id,from_category_id:envelopeIds[0],to_category_id:envelopeIds[1],amount_cents:1000}]);
 const beforeModel=buildModel(seed,p.sequence),afterModel=buildModel(moved,p.sequence);
 assert.equal(afterModel.summary.ending_envelope_cents,beforeModel.summary.ending_envelope_cents);

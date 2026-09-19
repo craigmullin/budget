@@ -145,13 +145,13 @@ def import_2026(source: str | Path, database: str | Path) -> dict[str, int | str
             connection.execute(
                 """INSERT INTO transactions
                 (transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,check_number,
-                 reconciled_date,cleared_marker,notes,source_year,source_workbook,source_sheet,source_row,
+                 reconciled_date,cleared_marker,notes,vacation_trip,vacation_type,source_year,source_workbook,source_sheet,source_row,
                  raw_category,raw_account,raw_description,import_batch_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (excel_date(raw_date).isoformat(), _value(row,"B"), category_id, account_ids.get(_value(row,"E")), amount, raw_amount,
                  _transaction_type(category_type, amount), _value(row,"F"),
                  excel_date(_value(row,"G")).isoformat() if _value(row,"G") else None,
-                 _value(row,"H"), _value(row,"I"), YEAR, source.name, EXPENSES_SHEET, row_number,
+                 _value(row,"H"), _value(row,"I"), _value(row,"J"), _value(row,"K"), YEAR, source.name, EXPENSES_SHEET, row_number,
                  raw_category, _value(row,"E"), _value(row,"B"), batch_id),
             )
             transaction_count += 1

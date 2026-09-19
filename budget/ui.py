@@ -32,6 +32,9 @@ def _connect(database: str | Path, *, readonly: bool = False) -> sqlite3.Connect
           category_id INTEGER NOT NULL REFERENCES categories(id),
           amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
           PRIMARY KEY (transaction_id, position), UNIQUE (transaction_id, category_id));""")
+        columns={r[1] for r in connection.execute("PRAGMA table_info(transactions)")}
+        for name in ('vacation_trip','vacation_type'):
+            if name not in columns: connection.execute(f"ALTER TABLE transactions ADD COLUMN {name} TEXT")
     return connection
 
 
@@ -137,6 +140,12 @@ def save_transaction(database: str | Path, payload: dict, transaction_id: int | 
     try:
         transaction_date = _iso_date(payload)
         description = str(payload.get("description") or "").strip() or None
+        notes = str(payload.get("notes") or "").strip() or None
+        vacation_trip = str(payload.get("vacation_trip") or "").strip() or None
+        vacation_type = str(payload.get("vacation_type") or "").strip() or None
+        if vacation_type and vacation_type not in ('Flights','Hotel','Transportation','Attractions','Food','Souvenirs','Misc'):
+            raise ValidationError('unknown vacation type')
+        if vacation_type and not vacation_trip: raise ValidationError('vacation type requires a trip')
         account = _lookup(connection, "accounts", _integer(payload, "account_id"))
         amount = _amount_cents(payload)
         splits = _splits(connection, payload, amount)
@@ -146,10 +155,10 @@ def save_transaction(database: str | Path, payload: dict, transaction_id: int | 
             cursor = connection.execute(
                 """INSERT INTO transactions
                    (transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,
-                    source_year,source_workbook,source_sheet,source_row,raw_category,raw_account,raw_description,import_batch_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    notes,vacation_trip,vacation_type,source_year,source_workbook,source_sheet,source_row,raw_category,raw_account,raw_description,import_batch_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (transaction_date, description, category["id"], account["id"], amount, str(Decimal(amount) / 100), kind,
-                 2026, APP_SOURCE_SHEET, APP_SOURCE_SHEET, _next_source_row(connection, "transactions"),
+                 notes,vacation_trip,vacation_type,2026, APP_SOURCE_SHEET, APP_SOURCE_SHEET, _next_source_row(connection, "transactions"),
                  category["canonical_name"], account["canonical_name"], description, _batch_id(connection)),
             )
             transaction_id = cursor.lastrowid
@@ -158,9 +167,9 @@ def save_transaction(database: str | Path, payload: dict, transaction_id: int | 
                 raise ValidationError("transaction not found")
             connection.execute(
                 """UPDATE transactions SET transaction_date=?,description=?,category_id=?,account_id=?,amount_cents=?,
-                   raw_amount=?,transaction_type=?,raw_category=?,raw_account=?,raw_description=? WHERE id=?""",
+                   raw_amount=?,transaction_type=?,raw_category=?,raw_account=?,raw_description=?,notes=?,vacation_trip=?,vacation_type=? WHERE id=?""",
                 (transaction_date, description, category["id"], account["id"], amount, str(Decimal(amount) / 100), kind,
-                category["canonical_name"], account["canonical_name"], description, transaction_id),
+                category["canonical_name"], account["canonical_name"], description,notes,vacation_trip,vacation_type, transaction_id),
             )
         connection.execute("DELETE FROM transaction_splits WHERE transaction_id=?", (transaction_id,))
         connection.executemany("INSERT INTO transaction_splits VALUES (?,?,?,?)",
@@ -267,12 +276,12 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
         return result
     transactions = transaction_rows(
         """SELECT id,transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,
-                  raw_category,raw_account,source_sheet,source_row
-           FROM transactions ORDER BY transaction_date DESC,id DESC LIMIT 100"""
+                  raw_category,raw_account,notes,vacation_trip,vacation_type,source_sheet,source_row
+           FROM transactions ORDER BY transaction_date DESC,id DESC"""
     )
     period_transactions = transaction_rows(
         """SELECT id,transaction_date,description,category_id,account_id,amount_cents,transaction_type,
-                  raw_category,raw_account,source_sheet,source_row
+                  raw_category,raw_account,notes,vacation_trip,vacation_type,source_sheet,source_row
            FROM transactions WHERE transaction_date < ? AND (? IS NULL OR transaction_date >= ?)
            ORDER BY transaction_date DESC,id DESC""",
         (selected["calculation_end_date_exclusive"], selected["calculation_start_date"], selected["calculation_start_date"]),
@@ -280,6 +289,8 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
     exceptions = [dict(r) for r in connection.execute(
         "SELECT exception_code,amount_cents,raw_value,description,resolution,source_sheet,source_row,source_cell FROM migration_exceptions ORDER BY id"
     ).fetchall()]
+    vacation_types=['Flights','Hotel','Transportation','Attractions','Food','Souvenirs','Misc']
+    vacation_rows=[dict(r) for r in connection.execute("SELECT vacation_trip,vacation_type,SUM(amount_cents) amount_cents FROM transactions WHERE vacation_trip IS NOT NULL GROUP BY vacation_trip,vacation_type ORDER BY vacation_trip,vacation_type")]
     result = {
         "product": "B.", "year": 2026, "as_of": latest_date,
         "period_summary": {
@@ -298,6 +309,7 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
         "categories": [dict(r) for r in connection.execute("SELECT id,canonical_name,category_type FROM categories ORDER BY display_order")],
         "accounts": [dict(r) for r in connection.execute("SELECT id,canonical_name FROM accounts ORDER BY canonical_name")],
         "envelopes": envelopes, "transactions": transactions, "period_transactions": period_transactions, "exceptions": exceptions,
+        "vacation":{"types":vacation_types,"trips":sorted({r['vacation_trip'] for r in vacation_rows}),"rows":vacation_rows},
     }
     result['payday'] = payday_state(connection, selected['id'])
     connection.close()
@@ -305,6 +317,7 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
 
 
 def make_handler(database: str | Path):
+    _connect(database).close()
     initialize_payday(database)
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: dict):
