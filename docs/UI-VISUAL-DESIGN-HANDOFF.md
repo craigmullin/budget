@@ -55,16 +55,16 @@ The orange period is deliberately small. It is the visual signature, not a decor
 
 | Token | Hex | Purpose |
 |---|---|---|
-| Paper | `#F7F3EB` | Main application background |
-| Surface | `#FFFDF8` | Raised/subtle content surfaces |
+| Eggshell | `#F8F7F2` | Main application background; soft and neutral without the earlier brown cast |
+| Surface | `#FCFBF7` | Raised/subtle content surfaces |
 | Ink | `#28242A` | Primary text, logo, important numbers |
 | Oxblood | `#722F37` | Primary brand/interface accent |
 | Plum | `#665064` | Secondary accent |
 | Orange | `#E86F32` | Signature period and very selective highlights |
 | Forest | `#3F6654` | Positive/healthy financial state |
 | Negative | `#A33A3A` | Genuine negative/problem state |
-| Muted | `#77706B` | Secondary text |
-| Stone | `#DDD6CB` | Rules, borders, separators |
+| Muted | `#716F6B` | Secondary text |
+| Stone | `#DEDDD7` | Rules, borders, separators |
 
 Avoid pure white as the dominant page background and avoid pure black text.
 
@@ -431,7 +431,7 @@ Budget should be warmer, quieter and more editorial.
 
 Differentiate Budget through:
 
-- warm cream Paper background
+- soft eggshell background
 - oxblood primary accent
 - signature orange period
 - typography-led presentation
@@ -484,7 +484,7 @@ The visual pass is complete when:
 
 - Budget is immediately distinguishable from Ledger.
 - The product mark is exactly **B.**, with the period in Signature Orange.
-- Paper/cream is the dominant background rather than generic white/gray.
+- Eggshell is the dominant background rather than bright white, beige, or generic gray.
 - Oxblood is the primary UI accent.
 - Orange remains a scarce signature detail.
 - Financial information is primarily presented through typography, lists and alignment rather than dashboard cards.
