@@ -60,7 +60,7 @@ function render() {
   if(detailId && document.querySelector('#envelope-dialog').open) renderDetail();
 }
 function transactionRows(rows) {
-  return rows.length ? rows.map(t=>`<div class="activity-row"><div><p>${esc(t.description||'No description')}</p><p class="detail">${dateLabel(t.transaction_date)} · ${esc(t.raw_category||'Uncategorized')} · ${esc(t.raw_account||'No account')}</p></div><span class="amount">${money(t.amount_cents)}</span><button class="text-action" type="button" data-transaction="${t.id}" aria-label="View ${esc(t.description||'transaction')}">View</button><button class="text-action" type="button" data-edit="${t.id}" aria-label="Edit ${esc(t.description||'transaction')}">Edit</button></div>`).join('') : '<p class="empty">No transactions to show.</p>';
+  return rows.length ? rows.map(t=>`<div class="activity-row"><div><p>${esc(t.description||'No description')}</p><p class="detail">${dateLabel(t.transaction_date)} · ${esc(t.raw_category||'Uncategorized')} · ${esc(t.raw_account||'No account')}</p></div><span class="amount">${money(t.amount_cents)}</span><div class="activity-actions"><button class="text-action" type="button" data-transaction="${t.id}" aria-label="View ${esc(t.description||'transaction')}">View</button><button class="text-action" type="button" data-edit="${t.id}" aria-label="Edit ${esc(t.description||'transaction')}">Edit</button></div></div>`).join('') : '<p class="empty">No transactions to show.</p>';
 }
 function renderEnvelopes() {
   const q=document.querySelector('#envelope-filter').value.trim().toLowerCase();
