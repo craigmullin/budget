@@ -28,6 +28,10 @@ service cloud.firestore {
             && validType(d)));
     }
     match /households/main/seed/{id} { allow read: if member(); allow write: if false; }
+    // Workbook refreshes are immutable archives selected by an administrator-only seed pointer.
+    match /households/main/source_versions/{version}/seed/{id} {
+      allow read: if member(); allow write: if false;
+    }
     match /households/main/changes/{id} {
       allow read: if member();
       allow create: if member() && validChange(id) && request.resource.data.revision == 1

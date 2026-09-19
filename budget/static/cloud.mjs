@@ -90,7 +90,12 @@ export async function startCloud(onReady,onError) {
     if(!user.emailVerified||!['creaghan1@gmail.com','cmlmullin@gmail.com'].includes(user.email?.toLowerCase())){document.querySelector('#login-error').textContent='This account does not have household access.';return;}
     try{
       const snapshot=await sdk.getDocs(sdk.collection(db,`${root}/seed`));seed={};
-      for(const d of snapshot.docs){const r=d.data();if(r.table)(seed[r.table]??=[]).push(...r.rows);else if(d.id==='payday')config=r;}
+      const active=snapshot.docs.find(d=>d.id==='active_source')?.data();
+      const source=active?.version
+        ?await sdk.getDocs(sdk.collection(db,`${root}/source_versions/${active.version}/seed`))
+        :snapshot;
+      for(const d of snapshot.docs)if(d.id==='payday')config=d.data();
+      for(const d of source.docs){const r=d.data();if(r.table)(seed[r.table]??=[]).push(...r.rows);}
       if(!seed.allocation_periods?.length)throw new Error('Household data migration is not yet complete.');
       await refresh();
       if(auth.currentUser?.uid!==user.uid){seed=null;main.classList.add('hidden');login.classList.remove('hidden');return;}

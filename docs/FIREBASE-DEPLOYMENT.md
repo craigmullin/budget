@@ -28,7 +28,7 @@ The rules emulator uses `demo-budget`, not production. Java and Firebase CLI are
 
 ## Deployment
 
-Pass 4 is prepared locally, not yet deployed. Before its first release, prepare the approved private configuration without modifying the workbook:
+Pass 4 is deployed, and its private configuration has been uploaded and verified. Do not rerun the one-time configuration upload for routine releases. The following preparation steps document the original setup without modifying the workbook:
 
 ```powershell
 python -m scripts.prepare-payday "C:/Users/cmullin/Downloads/Budget 2026.xlsx"
@@ -45,6 +45,14 @@ firebase deploy --only firestore:rules,hosting --project budget-24acc
 `scripts/firebase-seed.cjs` uses the existing Firebase CLI login in memory, commits the entire seed atomically, and refuses to overwrite any existing seed. Do not rerun imports to reset production. `scripts/firebase-verify.cjs` verifies every uploaded record against `.local/firebase/seed.json` without printing financial data.
 
 ## Use and backups
+
+### Current-workbook refreshes
+
+The September 19 authoritative upload has SHA256 `d2e0097b7f5e660ba7b0b15b98f44c41a9e9aaba9fa55d72f82eed9376599d9`; it contains 1,604 transactions through September 12, 2026. All 1,638 Actual/Envelope pairs match the saved worksheet, and all browser calculations / 26 models match the independent Python export. It already contains the September 11 budget, so forward Payday Budget configuration begins September 25. The current 63 defaults total $3,563.99.
+
+The original `seed` table chunks are still intact. The latest source is an immutable private archive at `households/main/source_versions/{sha256}/seed`. Administrator-only `seed/active_source` selects it on sign-in/reload; `seed/catalog` now permits the refreshed transaction IDs. Rules allow only the two verified household accounts to read source archives and deny client writes to archives, catalog and selector. Payday configuration remains unchanged.
+
+`scripts/firebase-refresh-audit.cjs` saves a private production backup under `.local/refresh-2026`. `scripts/firebase-replace-current.cjs prepare|activate|verify` is deliberately restricted to the September 19 audited workbook, verifies the archive before switching, and commits the selector, catalog, Payday configuration and pre-launch mutable-state reset atomically with preconditions. It is not a general repeated-import tool; future refreshes require another audit and explicit conflict handling. Never rerun original seed/configuration uploads or put private exports in Hosting.
 
 Use the hosted site after cutover. `localhost` deliberately remains the separate Python/SQLite reference app; local edits do not synchronize with Firebase. Never use both as the writable source of truth after cutover.
 

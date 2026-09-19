@@ -1,12 +1,13 @@
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {calculateEnvelopes,buildModel,effectiveData,parseAmount} from '../budget/static/cloud-model.mjs';
-const seed=JSON.parse(readFileSync('.local/firebase/seed.json'));
-const oracle=JSON.parse(readFileSync('.local/firebase/oracle.json'));
+const directory=process.argv[2]||'.local/firebase';
+const seed=JSON.parse(readFileSync(`${directory}/seed.json`));
+const oracle=JSON.parse(readFileSync(`${directory}/oracle.json`));
 const results=calculateEnvelopes(seed);
 assert.equal(results.length,oracle.length);
 for(let i=0;i<oracle.length;i++) for(const key of Object.keys(oracle[i])) assert.equal(results[i][key],oracle[i][key],`${i}: ${key}`);
-const models=JSON.parse(readFileSync('.local/firebase/models.json'));
+const models=JSON.parse(readFileSync(`${directory}/models.json`));
 for(const expected of models) {
   const actual=buildModel(seed,expected.selected_period.sequence);
   assert.deepEqual(actual.envelopes,expected.envelopes);

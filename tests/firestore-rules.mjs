@@ -13,6 +13,12 @@ try {
   await assertSucceeds(getDoc(doc(db,catalog)));await assertSucceeds(getDoc(doc(wife,catalog)));
   await assertFails(getDoc(doc(outsider,catalog)));await assertFails(getDoc(doc(unverified,catalog)));await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),catalog)));
   await assertFails(setDoc(doc(db,catalog),{}));
+  const archive='households/main/source_versions/test-version/seed/transactions_000';
+  await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),archive),{table:'transactions',rows:[]}));
+  await assertSucceeds(getDoc(doc(db,archive)));await assertSucceeds(getDoc(doc(wife,archive)));
+  await assertFails(getDoc(doc(outsider,archive)));await assertFails(getDoc(doc(unverified,archive)));
+  await assertFails(setDoc(doc(db,archive),{table:'transactions',rows:[]}));
+  await assertFails(setDoc(doc(db,'households/main/seed/active_source'),{version:'test-version'}));
   const change={id:'5',transaction_date:'2026-01-01',description:'Food',category_id:1,account_id:1,amount_cents:1234,transaction_type:'expense',deleted:false,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
   await assertSucceeds(setDoc(doc(db,'households/main/changes/5'),change));
   await assertFails(setDoc(doc(db,'households/main/changes/5'),{...change,revision:1}));

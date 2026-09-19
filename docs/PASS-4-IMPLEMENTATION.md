@@ -35,4 +35,4 @@ Original Pass 1 fixture tests require the approved original XLSX hash. The newer
 
 ## Release status
 
-Implementation and automated validation are complete locally. Production remains on Pass 3 until deployment is approved. See the configuration/deployment steps in FIREBASE-DEPLOYMENT.md. After release, review a real two-week workflow with Craig and his wife. Do not begin reconciliation or historical migration before their review.
+Implementation and automated validation are complete. Pass 4 was deployed to `https://budget-24acc.web.app` with user approval. All eight hosted files and the approved private configuration were verified against the local release; original private source records remain unchanged. Hosted mobile sign-in smoke test passes. Review a real two-week workflow with Craig and his wife next. Do not begin reconciliation or historical migration before their review.

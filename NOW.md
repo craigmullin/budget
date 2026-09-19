@@ -1,6 +1,13 @@
 # Current state
 
-Last reviewed: 2026-09-12
+Last reviewed: 2026-09-19
+
+- The September 19 authoritative upload is live: 1,604 transactions through September 12, 2026. All 1,638 envelope results and all 26 browser/Python period models match the workbook exactly.
+- The workbook already contains the September 11 allocation: 44 funded envelopes totaling $4,097.55. Payday Budget therefore resumes with the September 25 period rather than applying defaults twice. Current `2026 Final` defaults total $3,563.99 across 63 envelopes.
+- At the user's direction, pre-launch mutable state was reset during activation: 33 transaction changes and the period-19 draft session were removed. No moves, settings overrides, extra allocations or expected-income records existed. A private safety snapshot was retained outside Hosting.
+
+- The superseded September 12 upload contained 1,570 transactions through September 3, 2026. It remains a private rollback archive but is no longer active.
+- The refreshed immutable source lives under `households/main/source_versions/{workbook-sha256}/seed`, selected by administrator-only `seed/active_source`. Original source tables remain unchanged. No household edits, moves, defaults overrides, sessions, extras or expectations existed at activation; a private pre-refresh backup is retained outside Hosting. Approved Payday configuration is unchanged. Reload the hosted app before use; enter subsequent actual transactions/paychecks before allocating their income.
 
 - Pass 1 historical migration core is implemented for the authoritative 2026 workbook only.
 - SQLite schema, XLSX importer, integer-cent calculation engine, provenance metadata, tests, and a temporary parity report are available.
@@ -9,7 +16,8 @@ Last reviewed: 2026-09-12
 - Pass 3 provides persistent Add/Edit/Delete Transaction and Move Money workflows over the proven SQLite/calculation layer.
 - Changes recalculate summaries and envelopes immediately and survive reloads.
 - The authoritative visual handoff is implemented: B. mark, warm editorial shell, Home/Envelopes/Transactions/More navigation, and explanatory read-only envelope detail.
-- Pass 4 is implemented and verified locally; it has not yet been deployed to Firebase. Budget now supports a shared persistent Payday Budget draft, independent editable defaults, reset, review, immutable completion, expected income, and extra-income allocations.
+- Pass 4 is deployed to Firebase after user approval. Budget now supports a shared persistent Payday Budget draft, independent editable defaults, reset, review, immutable completion, expected income, and extra-income allocations.
+- Release verification: all eight hosted files match the tested local release; private forward configuration matches the approved defaults and zero opening pool; every original private source record remains unchanged. Hosted mobile sign-in smoke test passes. Real signed-in household workflow review remains for Craig and his wife.
 - Household clarification: one Payday Budget per existing two-week allocation period. The unallocated pool starts at $0 on September 11, 2026; posted income adds to it and completed allocations subtract from it. Subsequent surplus/deficit carries forward. Existing imported budgets are unchanged and cannot receive defaults again.
 - All 63 defaults were read from the uploaded `2026 Final` configuration, totaling $3,583.60. The four College defaults map to existing LSU envelopes with names/history preserved, as explicitly approved.
 - Negative envelopes and negative unallocated remainder are allowed. Expected income never creates spendable money or automatically posts a transaction. Unexpected income may be allocated any day without reapplying defaults.
