@@ -55,8 +55,8 @@ The orange period is deliberately small. It is the visual signature, not a decor
 
 | Token | Hex | Purpose |
 |---|---|---|
-| Eggshell | `#F8F7F2` | Main application background; soft and neutral without the earlier brown cast |
-| Surface | `#FCFBF7` | Raised/subtle content surfaces |
+| Eggshell | `#F5F6F4` | Main application background; a very light neutral eggshell without a warm paper cast |
+| Surface | `#FBFBFA` | Raised/subtle content surfaces |
 | Ink | `#28242A` | Primary text, logo, important numbers |
 | Oxblood | `#722F37` | Primary brand/interface accent |
 | Plum | `#665064` | Secondary accent |
