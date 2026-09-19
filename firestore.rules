@@ -13,6 +13,41 @@ service cloud.firestore {
         || (type == 'transfer' && d.transaction_type == 'transfer')
         || (type == 'expense' && d.transaction_type == (d.amount_cents < 0 ? 'refund_credit' : 'expense'));
     }
+    function validSplitAllocation(a, envelopeIds, categoryTypes) {
+      return a.keys().hasOnly(['category_id','amount_cents','active']) && a.active == true
+        && a.category_id in envelopeIds
+        && categoryTypes[string(a.category_id)] == 'expense'
+        && a.amount_cents is int && a.amount_cents > 0 && a.amount_cents <= 100000000;
+    }
+    function unusedSplitAllocation(a) {
+      return a.keys().hasOnly(['category_id','amount_cents','active']) && a.active == false
+        && a.category_id == 0 && a.amount_cents == 0;
+    }
+    function validSplitRows(d) {
+      let a = d.allocations;
+      let c = catalog();
+      return a is list && a.size() == 6 && d.allocation_count is int && d.allocation_count >= 2 && d.allocation_count <= 6
+        && validSplitAllocation(a[0], c.envelope_ids, c.category_types) && validSplitAllocation(a[1], c.envelope_ids, c.category_types)
+        && (d.allocation_count < 3 ? unusedSplitAllocation(a[2]) : validSplitAllocation(a[2], c.envelope_ids, c.category_types))
+        && (d.allocation_count < 4 ? unusedSplitAllocation(a[3]) : validSplitAllocation(a[3], c.envelope_ids, c.category_types))
+        && (d.allocation_count < 5 ? unusedSplitAllocation(a[4]) : validSplitAllocation(a[4], c.envelope_ids, c.category_types))
+        && (d.allocation_count < 6 ? unusedSplitAllocation(a[5]) : validSplitAllocation(a[5], c.envelope_ids, c.category_types));
+    }
+    function distinctSplitRows(d) {
+      let a = d.allocations;
+      return a[0].category_id != a[1].category_id
+        && (d.allocation_count < 3 || (a[2].category_id != a[0].category_id && a[2].category_id != a[1].category_id))
+        && (d.allocation_count < 4 || (a[3].category_id != a[0].category_id && a[3].category_id != a[1].category_id && a[3].category_id != a[2].category_id))
+        && (d.allocation_count < 5 || (a[4].category_id != a[0].category_id && a[4].category_id != a[1].category_id && a[4].category_id != a[2].category_id && a[4].category_id != a[3].category_id))
+        && (d.allocation_count < 6 || (a[5].category_id != a[0].category_id && a[5].category_id != a[1].category_id && a[5].category_id != a[2].category_id && a[5].category_id != a[3].category_id && a[5].category_id != a[4].category_id));
+    }
+    function validSplits(d) {
+      let a = d.allocations;
+      return validSplitRows(d) && distinctSplitRows(d)
+        && d.amount_cents > 0 && d.transaction_type == 'expense' && d.category_id == a[0].category_id
+        && d.amount_cents == a[0].amount_cents + a[1].amount_cents + a[2].amount_cents
+          + a[3].amount_cents + a[4].amount_cents + a[5].amount_cents;
+    }
     function validChange(id) {
       let d = request.resource.data;
       return d.id == id && d.updated_by == request.auth.uid && d.updated_at == request.time
@@ -20,12 +55,12 @@ service cloud.firestore {
         && (id in catalog().transaction_ids || id.matches('app_[a-zA-Z0-9-]+'))
         && ((d.deleted == true && d.keys().hasOnly(['id','deleted','revision','updated_by','updated_at']))
           || (d.deleted == false
-            && d.keys().hasOnly(['id','transaction_date','description','category_id','account_id','amount_cents','transaction_type','deleted','revision','updated_by','updated_at'])
+            && d.keys().hasOnly(['id','transaction_date','description','category_id','account_id','amount_cents','transaction_type','allocation_count','allocations','deleted','revision','updated_by','updated_at'])
             && d.transaction_date in catalog().valid_dates
             && d.description is string && d.description.size() <= 250
             && d.category_id in catalog().category_ids && d.account_id in catalog().account_ids
             && d.amount_cents is int && d.amount_cents != 0 && d.amount_cents >= -100000000 && d.amount_cents <= 100000000
-            && validType(d)));
+            && validType(d) && (!('allocations' in d) || validSplits(d))));
     }
     match /households/main/seed/{id} { allow read: if member(); allow write: if false; }
     // Workbook refreshes are immutable archives selected by an administrator-only seed pointer.

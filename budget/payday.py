@@ -1,6 +1,7 @@
 """Supplemental application records; migrated tables are never rewritten for sessions."""
 from __future__ import annotations
 import json
+import os
 import sqlite3
 import uuid
 from contextlib import closing
@@ -19,7 +20,7 @@ def config(connection):
     return rows[0] if rows else None
 
 def initialize(database):
-    path=Path('.local/firebase/payday-config.json')
+    path=Path(os.environ.get('BUDGET_PAYDAY_CONFIG', '.local/firebase/payday-config.json'))
     if not path.exists(): return
     settings=json.loads(path.read_text())
     with closing(sqlite3.connect(database)) as c, c:

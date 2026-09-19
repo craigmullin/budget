@@ -19,6 +19,12 @@ const edited=effectiveData(seed,[{id:'app_test',transaction_date:p.calculation_s
 assert.equal(calculateEnvelopes(edited).find(r=>r.period_id===p.id&&r.category_id===c).actual_cents,results.find(r=>r.period_id===p.id&&r.category_id===c).actual_cents+1234);
 const deleted=effectiveData(seed,[{id:seed.transactions[0].id,deleted:true}]); assert.equal(deleted.transactions.length,seed.transactions.length-1);
 const envelopeIds=[...new Set(seed.budget_allocations.map(b=>b.category_id))];
+const split=effectiveData(seed,[{id:'app_split',transaction_date:p.calculation_start_date,description:'Walmart',account_id:seed.accounts[0].id,category_id:envelopeIds[0],amount_cents:3283,transaction_type:'expense',allocations:[{category_id:envelopeIds[0],amount_cents:2354},{category_id:envelopeIds[1],amount_cents:929}]}]);
+const splitModel=buildModel(split,p.sequence),splitTx=splitModel.period_transactions.find(t=>t.id==='app_split');
+assert.equal(splitTx.amount_cents,3283);assert.equal(splitTx.allocations.length,2);assert.equal(splitModel.summary.transaction_count,seed.transactions.length+1);
+const baseSplitModel=buildModel(seed,p.sequence);
+assert.equal(splitModel.envelopes.find(e=>e.id===envelopeIds[0]).ending_cents,baseSplitModel.envelopes.find(e=>e.id===envelopeIds[0]).ending_cents-2354);
+assert.equal(splitModel.envelopes.find(e=>e.id===envelopeIds[1]).ending_cents,baseSplitModel.envelopes.find(e=>e.id===envelopeIds[1]).ending_cents-929);
 const moved=effectiveData(seed,[],[{period_id:p.id,from_category_id:envelopeIds[0],to_category_id:envelopeIds[1],amount_cents:1000}]);
 const beforeModel=buildModel(seed,p.sequence),afterModel=buildModel(moved,p.sequence);
 assert.equal(afterModel.summary.ending_envelope_cents,beforeModel.summary.ending_envelope_cents);

@@ -1,6 +1,7 @@
 import {isCloud,cloudRequest,startCloud,downloadBackup} from './cloud.mjs';
 import {renderPayday} from './payday.mjs';
 import {budgetToday} from './payday-model.mjs';
+import {parsePositiveCents,calculateSplit} from './split-model.mjs';
 const money = cents => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format((cents||0)/100);
 const dateLabel = value => value ? new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`)) : 'No transactions';
 const amountClass = cents => cents < 0 ? 'negative' : '';
@@ -9,6 +10,10 @@ let model;
 let view = 'home';
 let detailId;
 let transactionRevision=0;
+let transactionSplits=null;
+let remainderIndex=null;
+let transactionCreateId=null;
+let transactionDetail=null;
 const signedMoney = cents => `${cents > 0 ? '+' : ''}${money(cents)}`;
 const periodRange = () => {
   const end = new Date(`${model.selected_period.end_date_exclusive}T00:00:00Z`);
@@ -55,7 +60,7 @@ function render() {
   if(detailId && document.querySelector('#envelope-dialog').open) renderDetail();
 }
 function transactionRows(rows) {
-  return rows.length ? rows.map(t=>`<div class="activity-row"><div><p>${esc(t.description||'No description')}</p><p class="detail">${dateLabel(t.transaction_date)} · ${esc(t.raw_category||'Uncategorized')} · ${esc(t.raw_account||'No account')}</p></div><span class="amount">${money(t.amount_cents)}</span><button class="text-action" type="button" data-edit="${t.id}" aria-label="Edit ${esc(t.description||'transaction')}">Edit</button></div>`).join('') : '<p class="empty">No transactions to show.</p>';
+  return rows.length ? rows.map(t=>`<div class="activity-row"><div><p>${esc(t.description||'No description')}</p><p class="detail">${dateLabel(t.transaction_date)} · ${esc(t.raw_category||'Uncategorized')} · ${esc(t.raw_account||'No account')}</p></div><span class="amount">${money(t.amount_cents)}</span><button class="text-action" type="button" data-transaction="${t.id}" aria-label="View ${esc(t.description||'transaction')}">View</button><button class="text-action" type="button" data-edit="${t.id}" aria-label="Edit ${esc(t.description||'transaction')}">Edit</button></div>`).join('') : '<p class="empty">No transactions to show.</p>';
 }
 function renderEnvelopes() {
   const q=document.querySelector('#envelope-filter').value.trim().toLowerCase();
@@ -68,7 +73,7 @@ function renderDetail() {
   document.querySelector('#envelope-title').textContent=e.category;
   document.querySelector('#envelope-total').innerHTML=`<span class="${amountClass(e.ending_cents)}">${money(e.ending_cents)}</span> <small>available</small>`;
   document.querySelector('#envelope-breakdown').innerHTML=[['Starting balance',money(e.starting_cents)],['Budget',signedMoney(e.budget_cents)],['Spent',signedMoney(-e.actual_cents)],['Moved / source adjustments',signedMoney(e.moved_cents)],['Available',money(e.ending_cents)]].map(([label,value],i)=>`<div class="${i===4?'total':''}"><span>${label}</span><span class="${i===4?amountClass(e.ending_cents):''}">${value}</span></div>`).join('');
-  document.querySelector('#envelope-transactions').innerHTML=transactionRows(model.period_transactions.filter(t=>t.category_id===e.id));
+  document.querySelector('#envelope-transactions').innerHTML=transactionRows(model.period_transactions.filter(t=>t.category_id===e.id||t.allocations?.some(a=>a.category_id===e.id)));
   document.querySelector('#envelope-source').textContent=`${periodRange()} · Source: ${e.source.sheet}, row ${e.source.row}. Actual ${e.source.actual_cell}; envelope ${e.source.ending_cell}.${e.application_budget_cents?` Includes ${money(e.application_budget_cents)} of new application allocations; imported source values remain unchanged.`:''}`;
 }
 function populateForms() {
@@ -82,7 +87,9 @@ function populateForms() {
 }
 function openTransaction(item) {
   transactionRevision=item?.revision||0;
+  transactionCreateId=item?null:`app_${crypto.randomUUID()}`;
   document.querySelector('#envelope-dialog').close();
+  document.querySelector('#transaction-detail-dialog').close();
   const form=document.querySelector('#transaction-form'); form.reset(); form.querySelector('.form-error').textContent='';
   document.querySelector('#transaction-id').value=item?.id||'';
   document.querySelector('#transaction-title').textContent=item?'Edit transaction':'Add transaction';
@@ -90,9 +97,19 @@ function openTransaction(item) {
   document.querySelector('#transaction-amount').value=item ? (item.amount_cents/100).toFixed(2) : '';
   document.querySelector('#transaction-description').value=item?.description||'';
   if(item){document.querySelector('#transaction-category').value=item.category_id;document.querySelector('#transaction-account').value=item.account_id;}
+  transactionSplits=item?.allocations?.length?item.allocations.map(a=>({category_id:a.category_id,raw:(a.amount_cents/100).toFixed(2)})):null;
+  remainderIndex=null;
+  renderSplitEditor();
   document.querySelector('#delete-transaction').classList.toggle('hidden',!item);
   document.querySelector('#transaction-dialog').showModal();
 }
+function totalCents(){return parsePositiveCents(document.querySelector('#transaction-amount').value);}
+function splitValues(){if(!transactionSplits)return null;const result=calculateSplit(document.querySelector('#transaction-amount').value,transactionSplits,remainderIndex);result.allocations.forEach((a,i)=>transactionSplits[i].amount_cents=a.amount_cents);return result;}
+function splitOptions(selected,index){const used=new Set(transactionSplits.map((r,i)=>i===index?null:r.category_id));return model.categories.filter(c=>c.category_type==='expense').map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''} ${used.has(c.id)?'disabled':''}>${esc(c.canonical_name)}</option>`).join('');}
+function updateSplitSummary(){if(!transactionSplits)return;const state=splitValues(),summary=document.querySelector('#split-summary');document.querySelectorAll('[data-remainder-value]').forEach(el=>{const amount=transactionSplits[Number(el.dataset.remainderValue)].amount_cents||0;el.textContent=money(amount);el.classList.toggle('negative',amount<0);});const label=state.remainder_cents<0?`${money(-state.remainder_cents)} over`:state.remaining===null?'Enter the transaction total':state.remaining===0?'$0.00 remaining':state.remaining>0?`${money(state.remaining)} remaining`:`${money(-state.remaining)} over`;summary.innerHTML=`<span>Remaining</span><strong>${label}</strong>`;summary.classList.toggle('over',state.remainder_cents<0||state.remaining!==null&&state.remaining<0);document.querySelector('#save-transaction').disabled=!state.valid||state.remaining!==0;}
+function renderSplitEditor(){const active=!!transactionSplits;document.querySelector('#split-editor').classList.toggle('hidden',!active);document.querySelector('#split-transaction').classList.toggle('hidden',active);document.querySelector('#single-category').classList.toggle('hidden',active);document.querySelector('#transaction-category').required=!active;if(!active){document.querySelector('#save-transaction').disabled=false;return;}document.querySelector('#split-rows').innerHTML=transactionSplits.map((row,i)=>`<div class="split-row"><label>Envelope<select data-split-category="${i}" required>${splitOptions(row.category_id,i)}</select></label><label>Amount${i===remainderIndex?`<span class="remainder-value" data-remainder-value="${i}">${money(row.amount_cents||0)}</span>`:`<input data-split-amount="${i}" inputmode="decimal" value="${esc(row.raw||'')}" placeholder="0.00" required>`}</label><div class="row-actions"><button class="text-action" data-remainder="${i}" type="button">${i===remainderIndex?'Fixed amount':'Use remainder'}</button><button class="text-action" data-remove-split="${i}" type="button" ${transactionSplits.length<=2?'disabled':''}>Remove</button></div></div>`).join('');document.querySelector('#add-split').disabled=transactionSplits.length>=6;updateSplitSummary();}
+function beginSplit(){const category=Number(document.querySelector('#transaction-category').value);if(!category){document.querySelector('#transaction-form .form-error').textContent='Choose an envelope before splitting.';return;}transactionSplits=[{category_id:category,raw:''},{category_id:model.categories.find(c=>c.category_type==='expense'&&c.id!==category)?.id,raw:''}];remainderIndex=0;renderSplitEditor();}
+function showTransactionDetail(item){transactionDetail=item;document.querySelector('#transaction-detail-title').textContent=item.description||'No description';document.querySelector('#transaction-detail-total').textContent=money(item.amount_cents);document.querySelector('#transaction-detail-meta').textContent=`${dateLabel(item.transaction_date)} · ${item.raw_account||'No account'}`;const rows=item.allocations?.length?item.allocations:[{category:item.raw_category||'Uncategorized',amount_cents:item.amount_cents}];document.querySelector('#transaction-detail-splits').innerHTML=rows.map((a,i)=>`<div class="${i===rows.length-1?'total':''}"><span>${esc(a.category)}</span><span>${money(a.amount_cents)}</span></div>`).join('');document.querySelector('#transaction-detail-dialog').showModal();}
 function openMove(fromId) {
   document.querySelector('#envelope-dialog').close();
   const form=document.querySelector('#move-form'); form.reset(); form.querySelector('.form-error').textContent='';
@@ -113,17 +130,29 @@ document.querySelector('#cloud-backup').addEventListener('click',()=>downloadBac
 document.querySelector('#move-money').addEventListener('click',()=>openMove(model.envelopes[0].id));
 document.querySelector('#detail-move').addEventListener('click',()=>openMove(detailId));
 document.querySelector('#move-amount').addEventListener('input',event=>{document.querySelector('#move-submit').textContent=Number(event.target.value)>0?`Move ${money(Math.round(Number(event.target.value)*100))}`:'Move money';});
+document.querySelector('#transaction-amount').addEventListener('input',updateSplitSummary);
+document.querySelector('#split-transaction').addEventListener('click',beginSplit);
+document.querySelector('#add-split').addEventListener('click',()=>{if(transactionSplits.length<6){transactionSplits.push({category_id:model.categories.find(c=>c.category_type==='expense'&&!transactionSplits.some(r=>r.category_id===c.id))?.id,raw:''});renderSplitEditor();}});
+document.querySelector('#use-one-envelope').addEventListener('click',()=>{if(transactionSplits.some((r,i)=>i>0&&parsePositiveCents(r.raw))&&!confirm('Use one envelope and discard the other split amounts?'))return;document.querySelector('#transaction-category').value=transactionSplits[0].category_id;transactionSplits=null;remainderIndex=null;renderSplitEditor();});
+document.querySelector('#transaction-detail-edit').addEventListener('click',()=>openTransaction(transactionDetail));
 window.addEventListener('hashchange',()=>{if(!model)return;if(location.hash==='#budget'&&model.payday&&!model.payday.eligible){const today=budgetToday();const period=[...model.periods].reverse().find(p=>p.label_date<=today);if(period){load(period.sequence).catch(showError);return;}}render();});
 document.addEventListener('click',event=>{
   const edit=event.target.closest('[data-edit]'); if(edit) openTransaction([...model.transactions,...model.period_transactions].find(t=>String(t.id)===edit.dataset.edit));
+  const transaction=event.target.closest('[data-transaction]');if(transaction)showTransactionDetail([...model.transactions,...model.period_transactions].find(t=>String(t.id)===transaction.dataset.transaction));
   const detail=event.target.closest('[data-detail]'); if(detail){detailId=Number(detail.dataset.detail);renderDetail();document.querySelector('#envelope-dialog').showModal();}
   const move=event.target.closest('[data-move]'); if(move) openMove(move.dataset.move);
+  const remainder=event.target.closest('[data-remainder]');if(remainder){const i=Number(remainder.dataset.remainder);if(remainderIndex===i){const state=splitValues();transactionSplits[i].raw=((state?.total-state?.fixed)/100).toFixed(2);remainderIndex=null;}else remainderIndex=i;renderSplitEditor();}
+  const remove=event.target.closest('[data-remove-split]');if(remove&&transactionSplits.length>2){const i=Number(remove.dataset.removeSplit);transactionSplits.splice(i,1);if(remainderIndex===i)remainderIndex=null;else if(remainderIndex>i)remainderIndex--;renderSplitEditor();}
   if(event.target.closest('[data-close]')) event.target.closest('dialog').close();
 });
+document.addEventListener('input',event=>{if(event.target.matches('[data-split-amount]')){transactionSplits[Number(event.target.dataset.splitAmount)].raw=event.target.value;updateSplitSummary();}});
+document.addEventListener('change',event=>{if(event.target.matches('[data-split-category]')){transactionSplits[Number(event.target.dataset.splitCategory)].category_id=Number(event.target.value);renderSplitEditor();}});
 document.querySelector('#transaction-form').addEventListener('submit',async event=>{
   event.preventDefault(); const form=event.currentTarget; busy(form,true); form.querySelector('.form-error').textContent='';
   const id=document.querySelector('#transaction-id').value;
   const payload={transaction_date:document.querySelector('#transaction-date').value,amount:document.querySelector('#transaction-amount').value,description:document.querySelector('#transaction-description').value,category_id:Number(document.querySelector('#transaction-category').value),account_id:Number(document.querySelector('#transaction-account').value)};
+  if(transactionSplits){const state=splitValues();if(!state.valid||state.remaining!==0){form.querySelector('.form-error').textContent=state.remaining<0?`${money(-state.remaining)} over`:`Split amounts must equal ${money(state.total)}`;busy(form,false);updateSplitSummary();return;}payload.allocations=transactionSplits.map(r=>({category_id:r.category_id,amount_cents:r.amount_cents}));payload.category_id=payload.allocations[0].category_id;}
+  else if(!id)payload.id=transactionCreateId;
   if(isCloud)payload.expected_revision=transactionRevision;
   try{await request(id?`/api/transactions/${id}`:'/api/transactions',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});form.closest('dialog').close();await load(model.selected_period.sequence);toast(id?'Transaction updated':'Transaction added');}catch(error){form.querySelector('.form-error').textContent=error.message;}finally{busy(form,false);}
 });

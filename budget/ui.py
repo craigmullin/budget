@@ -25,6 +25,13 @@ def _connect(database: str | Path, *, readonly: bool = False) -> sqlite3.Connect
     connection = sqlite3.connect(f"file:{path}?mode={'ro' if readonly else 'rw'}", uri=True)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
+    if not readonly:
+        connection.executescript("""CREATE TABLE IF NOT EXISTS transaction_splits (
+          transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+          position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 5),
+          category_id INTEGER NOT NULL REFERENCES categories(id),
+          amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+          PRIMARY KEY (transaction_id, position), UNIQUE (transaction_id, category_id));""")
     return connection
 
 
@@ -90,6 +97,28 @@ def _transaction_type(category_type: str, amount_cents: int) -> str:
     return "refund_credit" if amount_cents < 0 else "expense"
 
 
+def _splits(connection: sqlite3.Connection, payload: dict, total: int) -> list[tuple[int, int]]:
+    raw = payload.get("allocations")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not 2 <= len(raw) <= 6 or total <= 0:
+        raise ValidationError("a split purchase needs two to six positive allocations")
+    result = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValidationError("each split needs an envelope and amount")
+        category = _lookup(connection, "categories", _integer(item, "category_id"))
+        amount = _integer(item, "amount_cents")
+        if category["category_type"] != "expense" or amount <= 0:
+            raise ValidationError("split allocations must be positive expense envelopes")
+        result.append((category["id"], amount))
+    if len({category for category, _ in result}) != len(result):
+        raise ValidationError("each split must use a different envelope")
+    if sum(amount for _, amount in result) != total:
+        raise ValidationError("split amounts must equal the transaction total")
+    return result
+
+
 def _next_source_row(connection: sqlite3.Connection, table: str) -> int:
     return connection.execute(
         f"SELECT COALESCE(MAX(source_row),0)+1 FROM {table} WHERE source_sheet=?", (APP_SOURCE_SHEET,)
@@ -108,9 +137,10 @@ def save_transaction(database: str | Path, payload: dict, transaction_id: int | 
     try:
         transaction_date = _iso_date(payload)
         description = str(payload.get("description") or "").strip() or None
-        category = _lookup(connection, "categories", _integer(payload, "category_id"))
         account = _lookup(connection, "accounts", _integer(payload, "account_id"))
         amount = _amount_cents(payload)
+        splits = _splits(connection, payload, amount)
+        category = _lookup(connection, "categories", splits[0][0] if splits else _integer(payload, "category_id"))
         kind = _transaction_type(category["category_type"], amount)
         if transaction_id is None:
             cursor = connection.execute(
@@ -130,8 +160,12 @@ def save_transaction(database: str | Path, payload: dict, transaction_id: int | 
                 """UPDATE transactions SET transaction_date=?,description=?,category_id=?,account_id=?,amount_cents=?,
                    raw_amount=?,transaction_type=?,raw_category=?,raw_account=?,raw_description=? WHERE id=?""",
                 (transaction_date, description, category["id"], account["id"], amount, str(Decimal(amount) / 100), kind,
-                 category["canonical_name"], account["canonical_name"], description, transaction_id),
+                category["canonical_name"], account["canonical_name"], description, transaction_id),
             )
+        connection.execute("DELETE FROM transaction_splits WHERE transaction_id=?", (transaction_id,))
+        connection.executemany("INSERT INTO transaction_splits VALUES (?,?,?,?)",
+                               [(transaction_id, position, category_id, split_amount)
+                                for position, (category_id, split_amount) in enumerate(splits)])
         connection.commit()
         return transaction_id
     except Exception:
@@ -220,18 +254,29 @@ def read_model(database: str | Path, period_sequence: int | None = None) -> dict
                                      "actual_cell": row["actual_source_cell"], "ending_cell": row["ending_source_cell"]}})
         if supplemental.get((selected['id'],row['id']),0):
             envelopes[-1]['application_budget_cents'] = supplemental[(selected['id'],row['id'])]
-    transactions = [dict(r) for r in connection.execute(
+    has_splits = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='transaction_splits'").fetchone() is not None
+    def transaction_rows(query, parameters=()):
+        result = [dict(r) for r in connection.execute(query, parameters).fetchall()]
+        for item in result:
+            item["allocations"] = [dict(r) for r in connection.execute(
+                """SELECT s.category_id,s.amount_cents,c.canonical_name AS category
+                   FROM transaction_splits s JOIN categories c ON c.id=s.category_id
+                   WHERE s.transaction_id=? ORDER BY s.position""", (item["id"],)).fetchall()] if has_splits else []
+            if item["allocations"]:
+                item["raw_category"] = f"Split · {len(item['allocations'])} envelopes"
+        return result
+    transactions = transaction_rows(
         """SELECT id,transaction_date,description,category_id,account_id,amount_cents,raw_amount,transaction_type,
                   raw_category,raw_account,source_sheet,source_row
            FROM transactions ORDER BY transaction_date DESC,id DESC LIMIT 100"""
-    ).fetchall()]
-    period_transactions = [dict(r) for r in connection.execute(
+    )
+    period_transactions = transaction_rows(
         """SELECT id,transaction_date,description,category_id,account_id,amount_cents,transaction_type,
                   raw_category,raw_account,source_sheet,source_row
            FROM transactions WHERE transaction_date < ? AND (? IS NULL OR transaction_date >= ?)
            ORDER BY transaction_date DESC,id DESC""",
         (selected["calculation_end_date_exclusive"], selected["calculation_start_date"], selected["calculation_start_date"]),
-    )]
+    )
     exceptions = [dict(r) for r in connection.execute(
         "SELECT exception_code,amount_cents,raw_value,description,resolution,source_sheet,source_row,source_cell FROM migration_exceptions ORDER BY id"
     ).fetchall()]

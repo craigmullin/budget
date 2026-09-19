@@ -88,6 +88,15 @@ CREATE TABLE transactions (
     UNIQUE(import_batch_id, source_sheet, source_row)
 );
 
+CREATE TABLE transaction_splits (
+    transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 5),
+    category_id INTEGER NOT NULL REFERENCES categories(id),
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    PRIMARY KEY (transaction_id, position),
+    UNIQUE (transaction_id, category_id)
+);
+
 CREATE TABLE allocation_periods (
     id INTEGER PRIMARY KEY,
     label_date TEXT NOT NULL,

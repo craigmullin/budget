@@ -51,7 +51,7 @@ export async function cloudRequest(url,options={}) {
     if(amount<0||p.from_category_id===p.to_category_id||!eligible(p.from_category_id)||!eligible(p.to_category_id)) throw new Error('Choose different envelopes and a positive amount.');
     await sdk.addDoc(sdk.collection(db,`${root}/moves`),{period_id:p.period_id,from_category_id:p.from_category_id,to_category_id:p.to_category_id,amount_cents:amount,description:p.description||'',created_by:auth.currentUser.uid,created_at:sdk.serverTimestamp()});
   } else {
-    const id=url.startsWith('/api/transactions/')?url.split('/').at(-1):`app_${crypto.randomUUID()}`;
+    const id=url.startsWith('/api/transactions/')?url.split('/').at(-1):(p.id&&/^app_[a-zA-Z0-9-]+$/.test(p.id)?p.id:`app_${crypto.randomUUID()}`);
     await sdk.runTransaction(db,async tx=>{
       const reference=sdk.doc(db,`${root}/changes/${id}`),snapshot=await tx.get(reference),old=snapshot.exists()?snapshot.data():null,revision=old?.revision||0;
       if(method!=='POST'&&revision!==(p.expected_revision??changes.find(t=>t.id===id)?.revision??0)) throw new Error('This transaction changed on another device. Reload before editing it.');
@@ -59,11 +59,20 @@ export async function cloudRequest(url,options={}) {
       const common={id,revision:revision+1,updated_by:auth.currentUser.uid,updated_at:sdk.serverTimestamp()};
       if(method==='DELETE') tx.set(reference,{...common,deleted:true});
       else {
-        const amount=parseAmount(p.amount),category=seed.categories.find(c=>c.id===p.category_id);
+        const amount=parseAmount(p.amount),inputAllocations=p.allocations;
+        if(inputAllocations!==undefined){
+          if(amount<0||!Array.isArray(inputAllocations)||inputAllocations.length<2||inputAllocations.length>6)throw new Error('A split purchase needs two to six positive allocations.');
+          if(inputAllocations.some(a=>!Number.isSafeInteger(a.category_id)||!Number.isSafeInteger(a.amount_cents)||a.amount_cents<=0))throw new Error('Each split needs an envelope and positive amount.');
+          if(new Set(inputAllocations.map(a=>a.category_id)).size!==inputAllocations.length)throw new Error('Each split must use a different envelope.');
+          if(inputAllocations.reduce((s,a)=>s+a.amount_cents,0)!==amount)throw new Error('Split amounts must equal the transaction total.');
+          if(inputAllocations.some(a=>seed.categories.find(c=>c.id===a.category_id)?.category_type!=='expense'))throw new Error('Splits can use expense envelopes only.');
+        }
+        const category=seed.categories.find(c=>c.id===(inputAllocations?.[0]?.category_id??p.category_id));
         if(!category||!seed.accounts.some(a=>a.id===p.account_id)) throw new Error('Choose a valid category and account.');
         if(!/^2026-\d{2}-\d{2}$/.test(p.transaction_date)||new Date(`${p.transaction_date}T00:00:00Z`).toISOString().slice(0,10)!==p.transaction_date) throw new Error('Choose a valid date in 2026.');
         const kind=['income','currency'].includes(category.category_type)?'income':['carryover','transfer'].includes(category.category_type)?category.category_type:amount<0?'refund_credit':'expense';
-        tx.set(reference,{...common,transaction_date:p.transaction_date,description:p.description||'',category_id:p.category_id,account_id:p.account_id,amount_cents:amount,transaction_type:kind,deleted:false});
+        const splitFields=inputAllocations?{allocation_count:inputAllocations.length,allocations:[...inputAllocations.map(a=>({...a,active:true})),...Array.from({length:6-inputAllocations.length},()=>({category_id:0,amount_cents:0,active:false}))]}:{};
+        tx.set(reference,{...common,transaction_date:p.transaction_date,description:p.description||'',category_id:category.id,account_id:p.account_id,amount_cents:amount,transaction_type:kind,deleted:false,...splitFields});
       }
     });
   }
@@ -113,6 +122,6 @@ export async function startCloud(onReady,onError) {
 export async function downloadBackup() {
   if(!seed)throw new Error('Sign in before exporting a backup.');
   await refresh();
-  const blob=new Blob([JSON.stringify({format:'budget-firestore-v2',exported_at:new Date().toISOString(),seed,config,changes,moves,settings,sessions,extras,expected})],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({format:'budget-firestore-v3',exported_at:new Date().toISOString(),seed,config,changes,moves,settings,sessions,extras,expected})],{type:'application/json'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`budget-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }

@@ -58,4 +58,6 @@ Use the hosted site after cutover. `localhost` deliberately remains the separate
 
 Cloud records refresh after committed writes, via realtime listeners for transactions, moves, defaults, sessions, extra allocations and expectations, and on returning to the browser. Saving requires an internet connection; cloud caching is memory-only rather than persistent shared-computer storage. Sign out on shared devices.
 
-Use More → Download household backup regularly and store the JSON privately. Format v2 includes seed/configuration, edits/moves, defaults, sessions, extra allocations and expected income. Spark does not provide the paid automated-backup workflow. Monitor Hosting/Firestore quotas in the console; free-tier limits can interrupt service, not trigger a billing upgrade by this app.
+Pass 5 stores a split in its parent `changes` document. Firestore receives six validation slots so rules can certify the complete total within the free-tier expression limit; `allocation_count` identifies the two-to-six active rows and inactive slots must be zero. Application models expose only ordered active allocations.
+
+Use More → Download household backup regularly and store the JSON privately. Format v3 includes seed/configuration, edits and complete split allocations, moves, defaults, sessions, extra allocations and expected income. Spark does not provide the paid automated-backup workflow. Monitor Hosting/Firestore quotas in the console; free-tier limits can interrupt service, not trigger a billing upgrade by this app.

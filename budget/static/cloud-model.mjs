@@ -18,7 +18,10 @@ export function calculateEnvelopes(data) {
   const balances = new Map(categories.map(c=>[c.id,0]));
   const results=[];
   for(const p of periods) for(const c of categories) {
-    const actual=data.transactions.filter(t=>t.category_id===c.id && t.transaction_date<p.calculation_end_date_exclusive && (p.calculation_start_date===null || t.transaction_date>=p.calculation_start_date)).reduce((s,t)=>s+(t.amount_cents||0),0);
+    const actual=data.transactions.filter(t=>t.transaction_date<p.calculation_end_date_exclusive && (p.calculation_start_date===null || t.transaction_date>=p.calculation_start_date)).reduce((s,t)=>{
+      if(Array.isArray(t.allocations)&&t.allocations.some(a=>a.active!==false))return s+t.allocations.filter(a=>a.active!==false&&a.category_id===c.id).reduce((v,a)=>v+a.amount_cents,0);
+      return s+(t.category_id===c.id?(t.amount_cents||0):0);
+    },0);
     const budget=data.budget_allocations.find(b=>b.allocation_period_id===p.id && b.category_id===c.id).amount_cents;
     const moved=data.envelope_movements.filter(m=>m.allocation_period_id===p.id && m.category_id===c.id).reduce((s,m)=>s+m.amount_cents,0);
     const starting=balances.get(c.id); const ending=starting+budget-actual+moved;
@@ -36,7 +39,11 @@ export function buildModel(data, sequence) {
     const r=calculations.find(r=>r.category_id===c.id), b=data.budget_allocations.find(b=>b.category_id===c.id && b.allocation_period_id===selected.id), s=data.source_parity_values.find(s=>s.category_id===c.id && s.allocation_period_id===selected.id);
     return {id:c.id,category:c.canonical_name,budget_cents:b.amount_cents,actual_cents:r.actual_cents,ending_cents:r.ending_envelope_cents,starting_cents:r.starting_cents,moved_cents:r.moved_cents,...(b.application_budget_cents?{application_budget_cents:b.application_budget_cents}:{}),source:{sheet:c.source_sheet,row:c.source_row,actual_cell:s.actual_source_cell,ending_cell:s.ending_source_cell}};
   });
-  const tx=data.transactions.map(t=>({...t,raw_category:data.categories.find(c=>c.id===t.category_id)?.canonical_name||t.raw_category,raw_account:data.accounts.find(a=>a.id===t.account_id)?.canonical_name||t.raw_account})).sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date)||(typeof a.id==='number'&&typeof b.id==='number'?b.id-a.id:String(b.id).localeCompare(String(a.id))));
+  const tx=data.transactions.map(t=>({...t,
+    allocations:(t.allocations||[]).filter(a=>a.active!==false).map(a=>({category_id:a.category_id,amount_cents:a.amount_cents,category:data.categories.find(c=>c.id===a.category_id)?.canonical_name||'Unknown envelope'})),
+    raw_category:t.allocation_count?`Split · ${t.allocation_count} envelopes`:data.categories.find(c=>c.id===t.category_id)?.canonical_name||t.raw_category,
+    raw_account:data.accounts.find(a=>a.id===t.account_id)?.canonical_name||t.raw_account
+  })).sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date)||(typeof a.id==='number'&&typeof b.id==='number'?b.id-a.id:String(b.id).localeCompare(String(a.id))));
   const periodTx=tx.filter(t=>t.transaction_date<selected.calculation_end_date_exclusive && (selected.calculation_start_date===null||t.transaction_date>=selected.calculation_start_date));
   const income=rows=>rows.filter(t=>t.transaction_type==='income').reduce((s,t)=>s+(t.amount_cents||0),0);
   const spending=rows=>rows.filter(t=>['expense','refund_credit'].includes(t.transaction_type)).reduce((s,t)=>s+(t.amount_cents||0),0);

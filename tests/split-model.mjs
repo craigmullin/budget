@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {parsePositiveCents,calculateSplit} from '../budget/static/split-model.mjs';
+assert.equal(parsePositiveCents('32.83'),3283);for(const bad of ['0','-1','1.001',''])assert.equal(parsePositiveCents(bad),null);
+const remainder=calculateSplit('86.43',[{category_id:25,raw:''},{category_id:26,raw:'18.29'},{category_id:27,raw:'15.97'}],0);
+assert.equal(remainder.allocations[0].amount_cents,5217);assert.equal(remainder.remaining,0);assert.equal(remainder.valid,true);
+const under=calculateSplit('32.83',[{category_id:25,raw:'23.54'},{category_id:26,raw:'9.28'}]);assert.equal(under.remaining,1);assert.equal(under.valid,true);
+const over=calculateSplit('32.83',[{category_id:25,raw:'23.54'},{category_id:26,raw:'9.30'}]);assert.equal(over.remaining,-1);
+const negative=calculateSplit('10.00',[{category_id:25,raw:''},{category_id:26,raw:'10.01'}],0);assert.equal(negative.remaining,0);assert.equal(negative.remainder_cents,-1);assert.equal(negative.allocations[0].amount_cents,-1);assert.equal(negative.valid,false);
+const duplicate=calculateSplit('10.00',[{category_id:25,raw:'5.00'},{category_id:25,raw:'5.00'}]);assert.equal(duplicate.valid,false);
+console.log('PASS: penny-perfect remainder, under/over, negative remainder, and duplicate-envelope validation.');

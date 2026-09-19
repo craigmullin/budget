@@ -12,6 +12,7 @@ class EnvelopeResult:
     ending_envelope_cents: int
 
 def calculate_envelopes(connection: sqlite3.Connection) -> list[EnvelopeResult]:
+    has_splits = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='transaction_splits'").fetchone() is not None
     periods = connection.execute(
         "SELECT id, calculation_start_date, calculation_end_date_exclusive FROM allocation_periods ORDER BY sequence"
     ).fetchall()
@@ -27,11 +28,25 @@ def calculate_envelopes(connection: sqlite3.Connection) -> list[EnvelopeResult]:
         for (category_id,) in categories:
             if start is None:
                 actual = connection.execute(
+                    """SELECT COALESCE(SUM(amount_cents),0) FROM (
+                       SELECT t.amount_cents FROM transactions t WHERE t.category_id=? AND t.transaction_date < ?
+                         AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id=t.id)
+                       UNION ALL SELECT s.amount_cents FROM transaction_splits s JOIN transactions t ON t.id=s.transaction_id
+                         WHERE s.category_id=? AND t.transaction_date < ?)""",
+                    (category_id, end, category_id, end),
+                ).fetchone()[0] if has_splits else connection.execute(
                     "SELECT COALESCE(SUM(amount_cents),0) FROM transactions WHERE category_id=? AND transaction_date < ?",
                     (category_id, end),
                 ).fetchone()[0]
             else:
                 actual = connection.execute(
+                    """SELECT COALESCE(SUM(amount_cents),0) FROM (
+                       SELECT t.amount_cents FROM transactions t WHERE t.category_id=? AND t.transaction_date >= ? AND t.transaction_date < ?
+                         AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id=t.id)
+                       UNION ALL SELECT s.amount_cents FROM transaction_splits s JOIN transactions t ON t.id=s.transaction_id
+                         WHERE s.category_id=? AND t.transaction_date >= ? AND t.transaction_date < ?)""",
+                    (category_id, start, end, category_id, start, end),
+                ).fetchone()[0] if has_splits else connection.execute(
                     "SELECT COALESCE(SUM(amount_cents),0) FROM transactions WHERE category_id=? AND transaction_date >= ? AND transaction_date < ?",
                     (category_id, start, end),
                 ).fetchone()[0]

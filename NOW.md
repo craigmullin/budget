@@ -2,6 +2,10 @@
 
 Last reviewed: 2026-09-19
 
+- Pass 5 split transactions are deployed to Firebase. One parent purchase supports two to six ordered positive expense-envelope allocations, a single live remainder row, exact integer-cent validation, atomic create/edit/collapse/delete, revision conflicts, compact list presentation, detail breakdown and backup preservation.
+- Split rules use six fixed validation slots internally so Firestore can certify every category, amount, uniqueness constraint and total within the free-tier rules expression budget. Inactive technical slots are not exposed as allocations by the application or local model.
+- Pass 5 checks pass for the $32.83 and $86.43 examples, penny under/over, negative remainder, duplicate envelopes, atomic persistence, reload/detail/collapse/delete, mobile overflow, two-account rules, current 1,638-result parity and the existing Payday Budget browser workflow.
+- Release verification: all nine hosted files match the tested release; production data remains the September 19 authoritative workbook with 1,604 transactions through September 12 and Payday Budget beginning September 25. Hosted signed-out mobile smoke passes. The required signed-in household phone test is next.
 - The September 19 authoritative upload is live: 1,604 transactions through September 12, 2026. All 1,638 envelope results and all 26 browser/Python period models match the workbook exactly.
 - The workbook already contains the September 11 allocation: 44 funded envelopes totaling $4,097.55. Payday Budget therefore resumes with the September 25 period rather than applying defaults twice. Current `2026 Final` defaults total $3,563.99 across 63 envelopes.
 - At the user's direction, pre-launch mutable state was reset during activation: 33 transaction changes and the period-19 draft session were removed. No moves, settings overrides, extra allocations or expected-income records existed. A private safety snapshot was retained outside Hosting.

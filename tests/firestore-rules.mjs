@@ -4,7 +4,7 @@ import {doc,setDoc,getDoc,serverTimestamp,writeBatch,Timestamp} from 'firebase/f
 const env=await initializeTestEnvironment({projectId:'demo-budget',firestore:{host:'127.0.0.1',port:8088,rules:readFileSync('firestore.rules','utf8')}});
 try {
   await env.clearFirestore();
-  await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'households/main/seed/catalog'),{category_ids:[1,2],category_types:{'1':'expense','2':'income'},account_ids:[1],period_ids:[1],envelope_ids:[1,2],transaction_ids:['5'],valid_dates:['2026-01-01']}));
+  await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'households/main/seed/catalog'),{category_ids:[1,2],category_types:{'1':'expense','2':'expense'},account_ids:[1],period_ids:[1],envelope_ids:[1,2],transaction_ids:['5'],valid_dates:['2026-01-01']}));
   const db=env.authenticatedContext('craig',{email:'creaghan1@gmail.com',email_verified:true}).firestore();
   const wife=env.authenticatedContext('wife',{email:'cmlmullin@gmail.com',email_verified:true}).firestore();
   const outsider=env.authenticatedContext('stranger',{email:'stranger@gmail.com',email_verified:true}).firestore();
@@ -26,6 +26,15 @@ try {
   await assertFails(setDoc(doc(db,'households/main/changes/5'),{...change,revision:2,transaction_type:'income'}));
   await assertFails(setDoc(doc(db,'households/main/changes/5'),{...change,revision:2,transaction_date:'2026-02-30'}));
   await assertSucceeds(setDoc(doc(db,'households/main/changes/5'),{id:'5',deleted:true,revision:2,updated_by:'craig',updated_at:serverTimestamp()}));
+  const slots=active=>[...active.map(a=>({...a,active:true})),...Array.from({length:6-active.length},()=>({category_id:0,amount_cents:0,active:false}))];
+  const split={id:'app_split',transaction_date:'2026-01-01',description:'Walmart',category_id:1,account_id:1,amount_cents:3283,transaction_type:'expense',allocation_count:2,allocations:slots([{category_id:1,amount_cents:2354},{category_id:2,amount_cents:929}]),deleted:false,revision:1,updated_by:'craig',updated_at:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(db,'households/main/changes/app_split'),split));
+  await assertSucceeds(getDoc(doc(wife,'households/main/changes/app_split')));
+  await assertFails(setDoc(doc(db,'households/main/changes/app_under'),{...split,id:'app_under',amount_cents:3282}));
+  await assertFails(setDoc(doc(db,'households/main/changes/app_duplicate'),{...split,id:'app_duplicate',allocations:slots([{category_id:1,amount_cents:2354},{category_id:1,amount_cents:929}])}));
+  await assertFails(setDoc(doc(db,'households/main/changes/app_zero'),{...split,id:'app_zero',allocations:slots([{category_id:1,amount_cents:3283},{category_id:2,amount_cents:0}])}));
+  await assertSucceeds(setDoc(doc(db,'households/main/changes/app_split'),{...change,id:'app_split',revision:2}));
+  await assertSucceeds(setDoc(doc(db,'households/main/changes/app_split'),{id:'app_split',deleted:true,revision:3,updated_by:'craig',updated_at:serverTimestamp()}));
   const move={period_id:1,from_category_id:1,to_category_id:2,amount_cents:100,description:'Gas',created_by:'craig',created_at:serverTimestamp()};
   await assertSucceeds(setDoc(doc(db,'households/main/moves/test'),move));
   await assertFails(setDoc(doc(db,'households/main/moves/test'),move));
